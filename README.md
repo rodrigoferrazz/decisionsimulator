@@ -101,6 +101,23 @@ cd "Sprint 03/Scenario and Decision Simulator (v1)"
 python3 -m streamlit run app.py
 ```
 
+## Deploy
+
+The app is ready to deploy from GitHub as a Streamlit application.
+
+### Streamlit Community Cloud
+
+- Repository: `rodrigoferrazz/deploy-m6`
+- Branch: `main`
+- Main file path: `app.py`
+- Python version: `3.12`
+
+### Render
+
+This repository includes `render.yaml` for Render Blueprint deploys. Render will
+install `requirements.txt`, run Streamlit on the platform-provided `$PORT`, and
+use `/_stcore/health` as the health check endpoint.
+
 ## Manual Verification
 
 From the repository root:
