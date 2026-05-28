@@ -28,7 +28,12 @@ from src.decision_engine import (
     ScenarioProbabilities,
     build_decision_summary,
 )
-from src.simulation_model import build_weather_driven_simulation
+from src.simulation_model import (
+    DECISION_TREE_METHOD,
+    PAYOFF_MATRIX_METHOD,
+    build_decision_tree_simulation,
+    build_payoff_matrix_simulation,
+)
 from src.weather_client import build_farm_weather_location, fetch_open_meteo_forecast
 
 
@@ -69,7 +74,15 @@ def render_app_shell() -> None:
     query_page = st.query_params.get("page")
     if query_page in PAGE_NAMES:
         st.session_state["active_page"] = query_page
+    if st.query_params.get("menu") == "closed":
+        st.session_state["mobile_nav_open"] = False
+        try:
+            del st.query_params["menu"]
+        except KeyError:
+            pass
 
+    _render_mobile_header()
+    _render_mobile_drawer()
     _render_sidebar()
 
     page = st.session_state.get("active_page", "Home")
@@ -110,6 +123,19 @@ def _inject_styles() -> None:
             background: var(--ag-bg);
             color: var(--ag-ink);
             font-family: var(--ag-ui);
+        }}
+        .ag-mobile-nav-open,
+        .ag-mobile-drawer-title,
+        .ag-mobile-drawer,
+        .ag-mobile-close-marker,
+        .ag-mobile-header-marker,
+        .ag-nav-active-marker,
+        div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker),
+        div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"],
+        div[data-testid="stElementContainer"]:has(.ag-nav-active-marker),
+        div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker),
+        div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] {{
+            display: none !important;
         }}
         section[data-testid="stSidebar"] {{
             background: var(--ag-surface);
@@ -180,13 +206,12 @@ def _inject_styles() -> None:
             background: #eef1e7 !important;
             color: var(--ag-leaf-dark) !important;
         }}
-        section[data-testid="stSidebar"] div[data-testid="stButton"] button:disabled {{
+        div[data-testid="stElementContainer"]:has(.ag-nav-active-marker) + div[data-testid="stElementContainer"] button {{
             background: var(--ag-leaf-soft) !important;
             color: var(--ag-leaf-dark) !important;
             font-weight: 750 !important;
-            cursor: default;
         }}
-        section[data-testid="stSidebar"] div[data-testid="stButton"] button:disabled::before {{
+        div[data-testid="stElementContainer"]:has(.ag-nav-active-marker) + div[data-testid="stElementContainer"] button::before {{
             content: "";
             position: absolute;
             left: -1rem;
@@ -234,9 +259,6 @@ def _inject_styles() -> None:
             display: flex;
             align-items: center;
             gap: 0.65rem;
-            width: 100%;
-            min-height: 42px;
-            box-sizing: border-box;
             padding: 0.62rem 0.75rem;
             border-radius: 10px;
             color: var(--ag-ink) !important;
@@ -277,8 +299,6 @@ def _inject_styles() -> None:
         }}
         .ag-nav-icon svg {{
             display: block;
-            width: 14px;
-            height: 14px;
             color: inherit;
         }}
         .ag-nav-label {{
@@ -662,16 +682,9 @@ def _inject_styles() -> None:
             border: 1px solid #c7dec5;
             box-shadow: 0 8px 24px -18px rgba(31, 63, 45, 0.38);
         }}
-        header[data-testid="stHeader"],
-        div[data-testid="stToolbar"],
-        div[data-testid="stDecoration"],
-        div[data-testid="stStatusWidget"],
-        #MainMenu {{
-            display: none !important;
-            height: 0 !important;
-            min-height: 0 !important;
-            visibility: hidden !important;
-            pointer-events: none !important;
+        header[data-testid="stHeader"] {{
+            background: var(--ag-surface);
+            border-bottom: 1px solid var(--ag-line);
         }}
         div[data-testid="stMetricValue"] {{
             color: {TEXT};
@@ -1082,14 +1095,14 @@ def _inject_styles() -> None:
             color: #667085 !important;
         }}
         div[data-testid="stVerticalBlock"]:has(.ag-sim-card-marker) div[data-testid="stElementContainer"]:has(.ag-run-button-wrap) + div[data-testid="stElementContainer"] {{
-            width: fit-content !important;
+            width: 100% !important;
             max-width: 100% !important;
             margin-top: 0.8rem;
-            margin-left: auto !important;
+            margin-left: 0 !important;
         }}
         div[data-testid="stVerticalBlock"]:has(.ag-sim-card-marker) div[data-testid="stElementContainer"]:has(.ag-run-button-wrap) + div[data-testid="stElementContainer"] div[data-testid="stButton"],
         div[data-testid="stVerticalBlock"]:has(.ag-sim-card-marker) div[data-testid="stElementContainer"]:has(.ag-run-button-wrap) + div[data-testid="stElementContainer"] button {{
-            width: auto !important;
+            width: 100% !important;
             max-width: 100% !important;
         }}
         div[data-testid="stVerticalBlock"]:has(.ag-sim-card-marker) div[data-testid="stElementContainer"]:has(.ag-run-button-wrap) + div[data-testid="stElementContainer"] button {{
@@ -1612,6 +1625,445 @@ def _inject_styles() -> None:
                 width: auto;
             }}
         }}
+        @media (max-width: 700px) {{
+            .block-container {{
+                padding: 0.75rem 0.9rem 2rem;
+                max-width: 100%;
+            }}
+            .ag-mobile-nav-open {{
+                display: block !important;
+                position: fixed;
+                inset: 0;
+                z-index: 99980;
+                background: rgba(15, 23, 42, 0.34);
+                backdrop-filter: blur(2px);
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) {{
+                display: block !important;
+                height: 0;
+                margin: 0;
+                padding: 0;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] {{
+                display: flex !important;
+                flex-direction: row !important;
+                align-items: center;
+                gap: 0.75rem;
+                position: sticky;
+                top: 0;
+                z-index: 100000;
+                margin: -0.75rem -0.9rem 1rem;
+                padding: 0.65rem 0.9rem;
+                background: rgba(255, 254, 250, 0.96);
+                border-bottom: 1px solid var(--ag-line);
+                backdrop-filter: blur(12px);
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] > div:first-child {{
+                width: auto !important;
+                flex: 0 0 auto !important;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] > div:last-child {{
+                display: none !important;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] {{
+                width: auto !important;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button {{
+                width: 44px !important;
+                min-width: 44px !important;
+                height: 44px !important;
+                min-height: 44px !important;
+                padding: 0 !important;
+                border-radius: 12px !important;
+                display: inline-flex;
+                justify-content: center;
+                align-items: center;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button p {{
+                display: none;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button [data-testid="stIconMaterial"] {{
+                margin: 0 !important;
+                font-size: 22px !important;
+            }}
+            .ag-mobile-brand {{
+                display: none !important;
+            }}
+            .ag-mobile-logo {{
+                width: 40px;
+                height: 40px;
+                border-radius: 11px;
+                display: grid;
+                place-items: center;
+                flex-shrink: 0;
+                background: linear-gradient(155deg, var(--ag-leaf), var(--ag-leaf-dark));
+            }}
+            .ag-mobile-brand-name {{
+                font-family: var(--ag-serif);
+                font-size: 1.55rem;
+                line-height: 1;
+                color: var(--ag-ink);
+            }}
+            .ag-mobile-brand-tag {{
+                font-size: 0.58rem;
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: var(--ag-muted);
+                margin-top: 0.18rem;
+                white-space: nowrap;
+            }}
+            section[data-testid="stSidebar"] {{
+                display: none !important;
+            }}
+            .ag-mobile-drawer {{
+                display: flex !important;
+                position: fixed;
+                inset: 0 auto 0 0;
+                z-index: 100010;
+                width: 80vw;
+                max-width: 360px;
+                min-width: 280px;
+                height: 100dvh;
+                box-sizing: border-box;
+                padding: 2rem 0.9rem 1rem;
+                flex-direction: column;
+                background: #fffefa;
+                border-right: 1px solid var(--ag-line);
+                border-radius: 0 22px 22px 0;
+                box-shadow: 22px 0 54px -30px rgba(15, 23, 42, 0.72);
+                animation: ag-mobile-drawer-in 180ms ease-out;
+            }}
+            @keyframes ag-mobile-drawer-in {{
+                from {{
+                    transform: translateX(-100%);
+                }}
+                to {{
+                    transform: translateX(0);
+                }}
+            }}
+            .ag-mobile-profile {{
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.68rem;
+                padding: 0.15rem 0.2rem 1.65rem;
+            }}
+            .ag-mobile-profile-logo {{
+                width: 58px;
+                height: 58px;
+                border-radius: 50%;
+                display: grid;
+                place-items: center;
+                background: linear-gradient(155deg, var(--ag-leaf), var(--ag-leaf-dark));
+                box-shadow: 0 8px 18px -12px rgba(31, 63, 45, 0.65);
+            }}
+            .ag-mobile-profile-name {{
+                color: var(--ag-ink);
+                font-size: 1.22rem;
+                line-height: 1;
+                font-weight: 800;
+            }}
+            .ag-mobile-profile-sub {{
+                color: var(--ag-muted);
+                font-size: 0.72rem;
+                margin-top: 0.2rem;
+            }}
+            .ag-mobile-drawer-nav {{
+                display: flex;
+                flex-direction: column;
+                gap: 0.3rem;
+            }}
+            .ag-mobile-drawer-link {{
+                display: flex;
+                align-items: center;
+                gap: 0.6rem;
+                min-height: 42px;
+                padding: 0.48rem 0.5rem;
+                border-radius: 10px;
+                color: var(--ag-ink) !important;
+                text-decoration: none !important;
+                font-size: 0.86rem;
+                font-weight: 700;
+            }}
+            .ag-mobile-drawer-link:hover,
+            .ag-mobile-drawer-link--active {{
+                background: var(--ag-leaf-soft);
+                color: var(--ag-leaf-dark) !important;
+            }}
+            .ag-mobile-drawer-link svg {{
+                width: 18px;
+                height: 18px;
+                color: currentColor;
+                flex-shrink: 0;
+            }}
+            .ag-mobile-drawer-close {{
+                margin-top: auto;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 42px;
+                border-radius: 999px;
+                background: #f2f1ef;
+                color: var(--ag-ink) !important;
+                text-decoration: none !important;
+                font-size: 0.78rem;
+                font-weight: 800;
+            }}
+            section[data-testid="stSidebar"] > div,
+            div[data-testid="stSidebarContent"],
+            div[data-testid="stSidebarUserContent"],
+            div[data-testid="stSidebarUserContent"] div[data-testid="stVerticalBlock"]:has(.ag-sidebar-footer) {{
+                height: 100%;
+                min-height: 0;
+                overflow-y: auto !important;
+            }}
+            div[data-testid="stSidebarUserContent"] {{
+                padding: 2rem 0.9rem 1rem;
+            }}
+            section[data-testid="stSidebar"] .ag-brand {{
+                display: flex;
+                flex-direction: column;
+                justify-content: flex-start;
+                align-items: flex-start;
+                gap: 0.65rem;
+                text-align: left;
+                padding: 0.2rem 0.15rem 1.35rem;
+            }}
+            section[data-testid="stSidebar"] .ag-logo {{
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                box-shadow: 0 8px 18px -12px rgba(31, 63, 45, 0.65);
+            }}
+            section[data-testid="stSidebar"] .ag-brand-name {{
+                font-family: var(--ag-ui);
+                font-size: 1.28rem;
+                font-weight: 800;
+            }}
+            section[data-testid="stSidebar"] .ag-brand-tag {{
+                font-size: 0.72rem;
+                letter-spacing: 0;
+                text-transform: none;
+                margin-top: 0.15rem;
+            }}
+            .ag-mobile-drawer-title {{
+                display: block !important;
+                color: var(--ag-muted);
+                font-size: 0.68rem;
+                font-weight: 800;
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                padding: 0.15rem 0.25rem 0.8rem;
+            }}
+            .ag-sidebar-footer {{
+                display: none;
+            }}
+            section[data-testid="stSidebar"] hr {{
+                display: none;
+            }}
+            .ag-nav {{
+                gap: 0.35rem;
+                margin: 0;
+            }}
+            section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
+                min-height: 44px;
+                padding: 0.55rem 0.45rem;
+                border: 1px solid transparent !important;
+                border-radius: 9px;
+                font-size: 0.86rem;
+                margin-bottom: 0.15rem;
+                gap: 0.5rem;
+            }}
+            section[data-testid="stSidebar"] div[data-testid="stButton"] button:hover {{
+                border-color: #dbe7d7 !important;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-nav-active-marker) + div[data-testid="stElementContainer"] button {{
+                border-color: #cfe3ca !important;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-nav-active-marker) + div[data-testid="stElementContainer"] button::before {{
+                display: none;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) {{
+                display: block !important;
+                margin-top: auto !important;
+                padding-top: 2rem;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"] {{
+                display: block !important;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"] button {{
+                justify-content: center !important;
+                min-height: 42px;
+                border-radius: 999px !important;
+                background: #f2f1ef !important;
+                color: var(--ag-ink) !important;
+                font-size: 0.78rem;
+                font-weight: 700;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"] button:hover {{
+                background: #e8e6e1 !important;
+            }}
+            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"] button::before {{
+                display: none;
+            }}
+            section[data-testid="stSidebar"] div[data-testid="stButton"] button:disabled::before {{
+                left: 0.2rem;
+                top: 10px;
+                bottom: 10px;
+                width: 4px;
+                border-radius: 0 4px 4px 0;
+            }}
+            section[data-testid="stSidebar"] div[data-testid="stButton"] button [data-testid="stIconMaterial"],
+            .ag-nav-icon {{
+                width: 30px;
+                height: 30px;
+                border-radius: 8px;
+            }}
+            h1 {{
+                font-size: 2.25rem !important;
+                line-height: 1.08 !important;
+            }}
+            h2 {{
+                font-size: 1.65rem !important;
+            }}
+            .ag-start-title {{
+                font-size: 2rem;
+                margin: 0.35rem 0 1rem;
+            }}
+            .ag-gs-grid,
+            .ag-glance-grid,
+            .ag-history-grid,
+            .ag-source-grid,
+            .ag-compare-summary,
+            .ag-compare-cards,
+            .ag-metric-grid,
+            .ag-metric-grid--five,
+            .ag-metric-grid--six,
+            .ag-consensus-meta,
+            .ag-compare-card-grid,
+            .ag-source-metrics {{
+                grid-template-columns: 1fr;
+            }}
+            div[data-testid="stHorizontalBlock"] {{
+                flex-direction: column;
+            }}
+            div[data-testid="stHorizontalBlock"] > div {{
+                width: 100% !important;
+                flex: 1 1 100% !important;
+            }}
+            .ag-card,
+            .ag-info-card,
+            .ag-history-card,
+            .ag-source-card,
+            .ag-compare-card,
+            .ag-criterion,
+            div[data-testid="stVerticalBlock"]:has(.ag-sim-card-marker) {{
+                border-radius: 12px;
+                padding: 1rem;
+                min-height: 0;
+            }}
+            .ag-gs-card {{
+                border-radius: 14px;
+                min-height: 0;
+                padding: 1.05rem;
+            }}
+            .ag-glance-card {{
+                border-radius: 12px;
+                padding: 1rem;
+            }}
+            .ag-page-head,
+            .ag-compare-card-head,
+            .ag-source-card-head,
+            .ag-savebar {{
+                flex-direction: column;
+                align-items: stretch;
+            }}
+            div[data-testid="stVerticalBlock"]:has(.ag-header-action-marker)
+            div[data-testid="stButton"] {{
+                margin-top: 0;
+            }}
+            .ag-consensus {{
+                border-radius: 14px;
+                padding: 1.15rem;
+                gap: 1rem;
+            }}
+            .ag-consensus-title {{
+                font-size: 2rem;
+                overflow-wrap: anywhere;
+            }}
+            .ag-consensus-right {{
+                display: none;
+            }}
+            .ag-weather-strip {{
+                display: grid;
+                grid-template-columns: 1fr;
+                font-size: 0.84rem;
+            }}
+            .ag-weather-strip > span {{
+                display: block;
+            }}
+            .ag-criterion-head {{
+                grid-template-columns: 38px 1fr;
+                gap: 0.7rem;
+            }}
+            .ag-criterion-badge {{
+                width: 38px;
+                height: 38px;
+                border-radius: 10px;
+                font-size: 1.1rem;
+            }}
+            .ag-criterion-title {{
+                font-size: 1.35rem;
+            }}
+            .ag-criterion-alt,
+            .ag-criterion-metric {{
+                align-items: flex-start;
+                flex-direction: column;
+                gap: 0.35rem;
+            }}
+            .ag-criterion-alt-name {{
+                font-size: 1.45rem;
+            }}
+            .ag-criterion-formula,
+            .ag-dmatrix {{
+                overflow-x: auto;
+            }}
+            .ag-dmatrix-row,
+            .ag-dmatrix-head {{
+                min-width: 620px;
+            }}
+            .ag-compare-table {{
+                min-width: 760px;
+            }}
+            .ag-risk-row {{
+                grid-template-columns: 1fr;
+                gap: 0.45rem;
+            }}
+            .ag-bar {{
+                width: 100%;
+            }}
+            .ag-form-caption {{
+                font-size: 0.85rem;
+                margin-top: 1rem;
+            }}
+            div[data-testid="stButton"] button,
+            div[data-testid="stDownloadButton"] button {{
+                min-height: 44px;
+                white-space: normal;
+            }}
+            .ag-save-toast {{
+                bottom: 12px;
+                right: 12px;
+                left: 12px;
+                width: auto;
+                grid-template-columns: 32px 1fr;
+                padding: 0.8rem;
+            }}
+            .ag-save-toast-icon {{
+                width: 32px;
+                height: 32px;
+            }}
+        }}
         div[data-baseweb="select"] > div {{
             background: var(--ag-surface) !important;
             border-color: var(--ag-line) !important;
@@ -1631,22 +2083,111 @@ def _inject_styles() -> None:
     )
 
 
+def _agrovision_logo_svg(size: int = 26) -> str:
+    """Return the AgroVision leaf logo SVG."""
+    return (
+        f'<svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none"'
+        ' stroke="#f3f8ef" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+        '<path d="M7 20h10"/>'
+        '<path d="M10 20c5.5-2.5.8-6.4 3-10"/>'
+        '<path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-2-3.4.8.1 2.9-.6 4.5 0z"/>'
+        '<path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.4-3.7-.8.1-2.8-.5-4.6 1.1z"/>'
+        '</svg>'
+    )
+
+
+def _render_mobile_header() -> None:
+    """Render the mobile-only top bar that opens the navigation drawer."""
+    mobile_nav_open = bool(st.session_state.get("mobile_nav_open", False))
+    if mobile_nav_open:
+        st.markdown('<span class="ag-mobile-nav-open"></span>', unsafe_allow_html=True)
+
+    st.markdown('<span class="ag-mobile-header-marker"></span>', unsafe_allow_html=True)
+    menu_col, _spacer_col = st.columns([0.14, 0.86])
+    with menu_col:
+        if st.button(
+            "Close" if mobile_nav_open else "Menu",
+            key="mobile_nav_toggle",
+            icon=":material/close:" if mobile_nav_open else ":material/menu:",
+        ):
+            st.session_state["mobile_nav_open"] = not mobile_nav_open
+            st.rerun()
+
+
+def _render_mobile_drawer() -> None:
+    """Render the mobile drawer independently from Streamlit's native sidebar."""
+    if not st.session_state.get("mobile_nav_open", False):
+        return
+
+    current_page = st.session_state.get("active_page", "Home")
+    nav_items = (
+        (
+            "Home",
+            "Home",
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="m3 9 9-7 9 7"/><path d="M9 22V12h6v10"/>'
+            '<path d="M21 9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9"/></svg>',
+        ),
+        (
+            "Start Simulation",
+            "Start Simulation",
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
+        ),
+        (
+            "Historical Insights",
+            "Historical Insights",
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+        ),
+        (
+            "Compare Simulations",
+            "Compare Simulations",
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>',
+        ),
+    )
+    links = []
+    for page, label, icon in nav_items:
+        active_class = " ag-mobile-drawer-link--active" if page == current_page else ""
+        links.append(
+            f'<a class="ag-mobile-drawer-link{active_class}" '
+            f'href="?page={quote(page)}&menu=closed">{icon}<span>{escape(label)}</span></a>'
+        )
+
+    st.markdown(
+        f"""
+        <nav class="ag-mobile-drawer" aria-label="Mobile navigation">
+            <div class="ag-mobile-profile">
+                <div class="ag-mobile-profile-logo">{_agrovision_logo_svg(28)}</div>
+                <div>
+                    <div class="ag-mobile-profile-name">AgroVision</div>
+                    <div class="ag-mobile-profile-sub">Precision Planting</div>
+                </div>
+            </div>
+            <div class="ag-mobile-drawer-nav">
+                {''.join(links)}
+            </div>
+            <a class="ag-mobile-drawer-close" href="?page={quote(str(current_page))}&menu=closed">
+                Close menu
+            </a>
+        </nav>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_sidebar() -> None:
     """Render the left navigation and update the selected app section."""
     with st.sidebar:
-        _logo_svg = (
-            '<svg width="26" height="26" viewBox="0 0 24 24" fill="none"'
-            ' stroke="#f3f8ef" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-            '<path d="M7 20h10"/>'
-            '<path d="M10 20c5.5-2.5.8-6.4 3-10"/>'
-            '<path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-2-3.4.8.1 2.9-.6 4.5 0z"/>'
-            '<path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.4-3.7-.8.1-2.8-.5-4.6 1.1z"/>'
-            '</svg>'
-        )
         st.markdown(
             f"""
             <div class="ag-brand" aria-label="AgroVision Home">
-                <div class="ag-logo">{_logo_svg}</div>
+                <div class="ag-logo">{_agrovision_logo_svg()}</div>
                 <div>
                     <div class="ag-brand-name">AgroVision</div>
                     <div class="ag-brand-tag">Precision Planting</div>
@@ -1656,6 +2197,10 @@ def _render_sidebar() -> None:
             unsafe_allow_html=True,
         )
         st.divider()
+        st.markdown(
+            '<div class="ag-mobile-drawer-title">Navigation</div>',
+            unsafe_allow_html=True,
+        )
 
         _icon_home = (
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
@@ -1686,35 +2231,49 @@ def _render_sidebar() -> None:
             '</svg>'
         )
         nav_items = (
-            ("Home", _icon_home, "Home"),
-            ("Start Simulation", _icon_sim, "Start Simulation"),
+            ("Home", _icon_home, ":material/home:", "Home"),
+            ("Start Simulation", _icon_sim, ":material/play_circle:", "Start Simulation"),
             (
                 "Historical Insights",
                 _icon_history,
+                ":material/monitoring:",
                 "Historical Insights",
             ),
             (
                 "Compare Simulations",
                 _icon_compare,
+                ":material/bar_chart:",
                 "Compare Simulations",
             ),
         )
         current_page = st.session_state.get("active_page", "Home")
 
-        nav_links = []
-        for page, icon, label in nav_items:
-            active_class = " ag-nav-link--active" if current_page == page else ""
-            nav_links.append(
-                f'<a class="ag-nav-link{active_class}" href="?page={quote(page)}" target="_self">'
-                f'  <span class="ag-nav-icon" aria-hidden="true">{icon}</span>'
-                f'  <span class="ag-nav-label">{escape(label)}</span>'
-                f"</a>"
-            )
+        st.markdown('<div class="ag-nav">', unsafe_allow_html=True)
+        for page, _icon, material_icon, label in nav_items:
+            if current_page == page:
+                st.markdown(
+                    '<span class="ag-nav-active-marker"></span>',
+                    unsafe_allow_html=True,
+                )
+            if st.button(
+                label,
+                key=f"nav_{page}",
+                icon=material_icon,
+                use_container_width=True,
+            ):
+                st.session_state["active_page"] = page
+                st.session_state["mobile_nav_open"] = False
+                st.query_params["page"] = page
+                st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown(
-            f'<nav class="ag-nav" aria-label="Primary navigation">{"".join(nav_links)}</nav>',
+            '<span class="ag-mobile-close-marker"></span>',
             unsafe_allow_html=True,
         )
+        if st.button("Close menu", key="mobile_nav_close", use_container_width=True):
+            st.session_state["mobile_nav_open"] = False
+            st.rerun()
 
 
 def _render_home_page() -> None:
@@ -1895,7 +2454,23 @@ def _render_start_simulation_page() -> None:
         st.session_state["field_context"] = field_context
 
         st.markdown('<div class="ag-run-button-wrap"></div>', unsafe_allow_html=True)
-        if st.button("▶ Run Simulation", type="primary"):
+        action_col_a, action_col_b = st.columns(2)
+        with action_col_a:
+            run_decision_tree = st.button(
+                "Simulate - Decision Tree",
+                type="primary",
+                use_container_width=True,
+            )
+        with action_col_b:
+            run_payoff_matrix = st.button(
+                "Simulate - Payoff Matrix",
+                use_container_width=True,
+            )
+
+        if run_decision_tree or run_payoff_matrix:
+            simulation_method = (
+                DECISION_TREE_METHOD if run_decision_tree else PAYOFF_MATRIX_METHOD
+            )
             input_errors = field_context.get("_input_errors", [])
             if input_errors:
                 st.error("Please correct the numeric inputs before running the simulation.")
@@ -1919,7 +2494,9 @@ def _render_start_simulation_page() -> None:
             }
             st.session_state["field_context"] = field_context
 
-            with st.spinner("Fetching Open-Meteo forecast and running simulation..."):
+            with st.spinner(
+                f"Fetching Open-Meteo forecast and running {simulation_method} simulation..."
+            ):
                 try:
                     forecast = fetch_open_meteo_forecast(location)
                 except Exception as exc:
@@ -1932,7 +2509,12 @@ def _render_start_simulation_page() -> None:
                     if station_summary is not None
                     else None
                 )
-                simulation = build_weather_driven_simulation(
+                simulation_builder = (
+                    build_decision_tree_simulation
+                    if simulation_method == DECISION_TREE_METHOD
+                    else build_payoff_matrix_simulation
+                )
+                simulation = simulation_builder(
                     field_context,
                     forecast,
                     station_observation=station_observation,
@@ -1941,6 +2523,7 @@ def _render_start_simulation_page() -> None:
                 st.session_state["payoff_matrix"] = simulation.payoff_matrix
                 st.session_state["weather_evidence"] = simulation.weather_evidence
                 st.session_state["productivity_simulation"] = simulation
+                st.session_state["simulation_method"] = simulation.simulation_method
             st.session_state["active_page"] = "Recommendation Summary"
             st.query_params["page"] = "Recommendation Summary"
             st.rerun()
@@ -2233,18 +2816,18 @@ def _render_productivity_recommendation_page(simulation) -> None:
     """Render the scoped productivity forecast and recommendation summary."""
     field_context = st.session_state.get("field_context", {})
     saved_toast = None
+    simulation_method = getattr(simulation, "simulation_method", DECISION_TREE_METHOD)
 
     header_col, save_col = st.columns([0.72, 0.28])
     with header_col:
         st.markdown(
-            """
+            f"""
             <div class="ag-page-head">
                 <div>
-                    <div class="ag-kicker">Weather-driven productivity forecast</div>
+                    <div class="ag-kicker">{escape(simulation_method)} simulation</div>
                     <h1>Recommendation <em style="font-style: italic; color: var(--ag-leaf);">summary</em>.</h1>
                     <p class="ag-muted" style="max-width: 70ch;">
-                        Productivity is estimated from farm location, seed type, soil pH,
-                        planting window, and Open-Meteo climatic conditions.
+                        {escape(_simulation_method_description(simulation_method))}
                     </p>
                 </div>
             </div>
@@ -2264,6 +2847,36 @@ def _render_productivity_recommendation_page(simulation) -> None:
         _productivity_summary_html(simulation, field_context),
         unsafe_allow_html=True,
     )
+
+    if simulation_method == PAYOFF_MATRIX_METHOD:
+        _render_productivity_evidence_sections(simulation, field_context)
+        return
+
+    _render_payoff_matrix_recommendation_sections(
+        simulation,
+        field_context,
+        include_consensus=False,
+        include_weather_evidence=False,
+    )
+
+
+def _simulation_method_description(simulation_method: str) -> str:
+    if simulation_method == PAYOFF_MATRIX_METHOD:
+        return (
+            "The Payoff Matrix engine compares seed density strategies with "
+            "Expected Value and Minimax using forecast-derived scenario probabilities."
+        )
+    return (
+        "The Decision Tree engine estimates productivity from farm location, seed "
+        "type, soil pH, planting window, Open-Meteo climate signals, and station data."
+    )
+
+
+def _render_productivity_evidence_sections(
+    simulation,
+    field_context: dict[str, object],
+) -> None:
+    """Render the supporting data source panels for a productivity estimate."""
     st.markdown(
         _data_sources_html(simulation),
         unsafe_allow_html=True,
@@ -2295,6 +2908,67 @@ def _render_productivity_recommendation_page(simulation) -> None:
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+
+def _render_payoff_matrix_recommendation_sections(
+    simulation,
+    field_context: dict[str, object],
+    *,
+    include_consensus: bool = True,
+    include_weather_evidence: bool = True,
+) -> None:
+    """Render Payoff Matrix-specific recommendation output."""
+    summary = simulation.decision_summary or build_decision_summary(
+        simulation.payoff_matrix,
+        simulation.probabilities,
+    )
+
+    if include_consensus:
+        st.markdown(
+            _recommendation_consensus_html(summary, simulation.payoff_matrix),
+            unsafe_allow_html=True,
+        )
+    if include_weather_evidence:
+        st.markdown(
+            _weather_evidence_html(simulation.weather_evidence, field_context),
+            unsafe_allow_html=True,
+        )
+
+    criterion_cols = st.columns(2)
+    with criterion_cols[0]:
+        st.markdown(
+            _criterion_card_html(
+                "Expected Value",
+                "ev",
+                summary,
+                simulation.payoff_matrix,
+                simulation.probabilities,
+            ),
+            unsafe_allow_html=True,
+        )
+    with criterion_cols[1]:
+        st.markdown(
+            _criterion_card_html(
+                "Minimax Regret",
+                "minimax",
+                summary,
+                simulation.payoff_matrix,
+                simulation.probabilities,
+            ),
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(_findings_card_html(summary), unsafe_allow_html=True)
+    st.subheader("Payoff Matrix")
+    st.dataframe(_payoff_matrix_dataframe(simulation.payoff_matrix), use_container_width=True)
+
+    st.download_button(
+        "Export Summary",
+        data=_build_simulation_download_text(simulation, field_context),
+        file_name="agrovision_payoff_matrix_summary.txt",
+        mime="text/plain",
+        use_container_width=True,
     )
 
 
@@ -2447,6 +3121,7 @@ def _comparison_cards_html(saved_simulations: list[dict[str, object]]) -> str:
     """Return compact cards for the saved simulation set."""
     cards = []
     for item in saved_simulations:
+        simulation_method = item.get("simulation_method", DECISION_TREE_METHOD)
         cards.append(dedent(f"""
         <div class="ag-compare-card">
             <div class="ag-compare-card-head">
@@ -2457,6 +3132,7 @@ def _comparison_cards_html(saved_simulations: list[dict[str, object]]) -> str:
                 <div class="ag-compare-card-value">{float(item["expected_productivity_bags_ha"]):.2f}</div>
             </div>
             <div class="ag-compare-card-grid">
+                <div><span>Method</span><strong>{escape(str(simulation_method))}</strong></div>
                 <div><span>Seed</span><strong>{escape(str(item["seed_type"]))}</strong></div>
                 <div><span>Climate</span><strong>{escape(str(item["climatic_condition"]))}</strong></div>
                 <div><span>Coordinates</span><strong>{float(item["farm_latitude"]):.4f}, {float(item["farm_longitude"]):.4f}</strong></div>
@@ -2473,6 +3149,7 @@ def _comparison_table_html(saved_simulations: list[dict[str, object]]) -> str:
     """Return a light, horizontally scrollable comparison table."""
     headers = (
         ("Simulation", "left"),
+        ("Method", "left"),
         ("Seed", "left"),
         ("Climate", "left"),
         ("Productivity", "right"),
@@ -2492,6 +3169,7 @@ def _comparison_table_html(saved_simulations: list[dict[str, object]]) -> str:
         rows.append(dedent(f"""
         <tr>
             <td>{escape(str(item["label"]))}</td>
+            <td>{escape(str(item.get("simulation_method", DECISION_TREE_METHOD)))}</td>
             <td>{escape(str(item["seed_type"]))}</td>
             <td><span class="ag-compare-pill">{escape(str(item["climatic_condition"]))}</span></td>
             <td data-align="right">{float(item["expected_productivity_bags_ha"]):.2f} bags/ha</td>
@@ -2533,11 +3211,13 @@ def _save_simulation_snapshot(
     expected_productivity = _display_bags_per_hectare(
         float(simulation.expected_productivity_bags_ha)
     )
-    summary_text = _build_productivity_download_text(simulation, field_context)
+    simulation_method = getattr(simulation, "simulation_method", DECISION_TREE_METHOD)
+    summary_text = _build_simulation_download_text(simulation, field_context)
 
     snapshot = {
         "label": label,
         "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "simulation_method": simulation_method,
         "seed_type": _seed_type_label(str(field_context.get("seed_type", "soybean"))),
         "farm_latitude": float(field_context.get("farm_latitude", 0.0) or 0.0),
         "farm_longitude": float(field_context.get("farm_longitude", 0.0) or 0.0),
@@ -2584,6 +3264,7 @@ def _saved_simulations_dataframe(
             {
                 "Simulation": item["label"],
                 "Saved at": item["saved_at"],
+                "Method": item.get("simulation_method", DECISION_TREE_METHOD),
                 "Seed": item["seed_type"],
                 "Latitude": item["farm_latitude"],
                 "Longitude": item["farm_longitude"],
@@ -3344,6 +4025,53 @@ def _build_productivity_download_text(
         f"{station_text}\n"
         f"Expected productivity: {expected_productivity:.2f} bags/ha\n\n"
         f"Recommendation summary: {recommendation_summary}\n"
+    )
+
+
+def _build_simulation_download_text(
+    simulation,
+    field_context: dict[str, object],
+) -> str:
+    """Build a text summary for whichever simulation engine produced the result."""
+    simulation_method = getattr(simulation, "simulation_method", DECISION_TREE_METHOD)
+    if simulation_method != PAYOFF_MATRIX_METHOD:
+        return _build_productivity_download_text(simulation, field_context)
+
+    summary = simulation.decision_summary or build_decision_summary(
+        simulation.payoff_matrix,
+        simulation.probabilities,
+    )
+    weather_evidence = dict(simulation.weather_evidence)
+    probability_lines = "\n".join(
+        f"- {scenario}: {probability:.2f}"
+        for scenario, probability in simulation.probabilities.items()
+    )
+    payoff_lines = "\n".join(
+        f"- {alternative}: "
+        + ", ".join(
+            f"{scenario}={payoff:.2f}"
+            for scenario, payoff in scenario_payoffs.items()
+        )
+        for alternative, scenario_payoffs in simulation.payoff_matrix.items()
+    )
+    return (
+        "AgroVision Payoff Matrix Summary\n"
+        f"Simulation method: {simulation_method}\n"
+        f"Seed type: {_seed_type_label(str(field_context.get('seed_type', 'soybean')))}\n"
+        f"Farm latitude: {field_context.get('farm_latitude')}\n"
+        f"Farm longitude: {field_context.get('farm_longitude')}\n"
+        f"Soil pH: {field_context.get('soil_ph')}\n"
+        f"Planting window: {field_context.get('planting_window')}\n"
+        f"Climatic condition: {simulation.climatic_condition}\n"
+        f"Weather source: {weather_evidence.get('source', 'Open-Meteo')}\n\n"
+        "Scenario probabilities\n"
+        f"{probability_lines}\n\n"
+        "Payoff matrix\n"
+        f"{payoff_lines}\n\n"
+        f"Final recommendation: {summary.final_recommendation}\n"
+        f"Expected Value recommendation: {summary.expected_value.recommendation}\n"
+        f"Minimax recommendation: {summary.minimax.recommendation}\n"
+        f"Explanation: {summary.explanation}\n"
     )
 
 
