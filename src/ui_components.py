@@ -234,6 +234,9 @@ def _inject_styles() -> None:
             display: flex;
             align-items: center;
             gap: 0.65rem;
+            width: 100%;
+            min-height: 42px;
+            box-sizing: border-box;
             padding: 0.62rem 0.75rem;
             border-radius: 10px;
             color: var(--ag-ink) !important;
@@ -274,6 +277,8 @@ def _inject_styles() -> None:
         }}
         .ag-nav-icon svg {{
             display: block;
+            width: 14px;
+            height: 14px;
             color: inherit;
         }}
         .ag-nav-label {{
@@ -657,9 +662,16 @@ def _inject_styles() -> None:
             border: 1px solid #c7dec5;
             box-shadow: 0 8px 24px -18px rgba(31, 63, 45, 0.38);
         }}
-        header[data-testid="stHeader"] {{
-            background: var(--ag-surface);
-            border-bottom: 1px solid var(--ag-line);
+        header[data-testid="stHeader"],
+        div[data-testid="stToolbar"],
+        div[data-testid="stDecoration"],
+        div[data-testid="stStatusWidget"],
+        #MainMenu {{
+            display: none !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
         }}
         div[data-testid="stMetricValue"] {{
             color: {TEXT};
@@ -1674,36 +1686,35 @@ def _render_sidebar() -> None:
             '</svg>'
         )
         nav_items = (
-            ("Home", _icon_home, ":material/home:", "Home"),
-            ("Start Simulation", _icon_sim, ":material/play_circle:", "Start Simulation"),
+            ("Home", _icon_home, "Home"),
+            ("Start Simulation", _icon_sim, "Start Simulation"),
             (
                 "Historical Insights",
                 _icon_history,
-                ":material/monitoring:",
                 "Historical Insights",
             ),
             (
                 "Compare Simulations",
                 _icon_compare,
-                ":material/bar_chart:",
                 "Compare Simulations",
             ),
         )
         current_page = st.session_state.get("active_page", "Home")
 
-        st.markdown('<div class="ag-nav">', unsafe_allow_html=True)
-        for page, _icon, material_icon, label in nav_items:
-            if st.button(
-                label,
-                key=f"nav_{page}",
-                icon=material_icon,
-                disabled=current_page == page,
-                use_container_width=True,
-            ):
-                st.session_state["active_page"] = page
-                st.query_params["page"] = page
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+        nav_links = []
+        for page, icon, label in nav_items:
+            active_class = " ag-nav-link--active" if current_page == page else ""
+            nav_links.append(
+                f'<a class="ag-nav-link{active_class}" href="?page={quote(page)}" target="_self">'
+                f'  <span class="ag-nav-icon" aria-hidden="true">{icon}</span>'
+                f'  <span class="ag-nav-label">{escape(label)}</span>'
+                f"</a>"
+            )
+
+        st.markdown(
+            f'<nav class="ag-nav" aria-label="Primary navigation">{"".join(nav_links)}</nav>',
+            unsafe_allow_html=True,
+        )
 
 
 def _render_home_page() -> None:
