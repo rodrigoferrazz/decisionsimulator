@@ -124,18 +124,6 @@ def _inject_styles() -> None:
             color: var(--ag-ink);
             font-family: var(--ag-ui);
         }}
-        header[data-testid="stHeader"],
-        div[data-testid="stToolbar"],
-        div[data-testid="stDecoration"],
-        div[data-testid="stStatusWidget"],
-        div[data-testid="stDeployButton"],
-        #MainMenu,
-        footer {{
-            display: none !important;
-            height: 0 !important;
-            min-height: 0 !important;
-            visibility: hidden !important;
-        }}
         .ag-mobile-nav-open,
         .ag-mobile-drawer-title,
         .ag-mobile-drawer,
@@ -146,7 +134,7 @@ def _inject_styles() -> None:
         div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"],
         div[data-testid="stElementContainer"]:has(.ag-nav-active-marker),
         div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker),
-        div[data-testid="stHorizontalBlock"]:has(.ag-mobile-header-marker) {{
+        div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] {{
             display: none !important;
         }}
         section[data-testid="stSidebar"] {{
@@ -693,6 +681,10 @@ def _inject_styles() -> None:
             padding: 1.7rem 1.9rem;
             border: 1px solid #c7dec5;
             box-shadow: 0 8px 24px -18px rgba(31, 63, 45, 0.38);
+        }}
+        header[data-testid="stHeader"] {{
+            background: var(--ag-surface);
+            border-bottom: 1px solid var(--ag-line);
         }}
         div[data-testid="stMetricValue"] {{
             color: {TEXT};
@@ -1652,7 +1644,7 @@ def _inject_styles() -> None:
                 margin: 0;
                 padding: 0;
             }}
-            div[data-testid="stHorizontalBlock"]:has(.ag-mobile-header-marker) {{
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] {{
                 display: flex !important;
                 flex-direction: row !important;
                 align-items: center;
@@ -1666,17 +1658,17 @@ def _inject_styles() -> None:
                 border-bottom: 1px solid var(--ag-line);
                 backdrop-filter: blur(12px);
             }}
-            div[data-testid="stHorizontalBlock"]:has(.ag-mobile-header-marker) > div:first-child {{
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] > div:first-child {{
                 width: auto !important;
                 flex: 0 0 auto !important;
             }}
-            div[data-testid="stHorizontalBlock"]:has(.ag-mobile-header-marker) > div:last-child {{
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] > div:last-child {{
                 display: none !important;
             }}
-            div[data-testid="stHorizontalBlock"]:has(.ag-mobile-header-marker) div[data-testid="stButton"] {{
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] {{
                 width: auto !important;
             }}
-            div[data-testid="stHorizontalBlock"]:has(.ag-mobile-header-marker) div[data-testid="stButton"] button {{
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button {{
                 width: 44px !important;
                 min-width: 44px !important;
                 height: 44px !important;
@@ -1687,10 +1679,10 @@ def _inject_styles() -> None:
                 justify-content: center;
                 align-items: center;
             }}
-            div[data-testid="stHorizontalBlock"]:has(.ag-mobile-header-marker) div[data-testid="stButton"] button p {{
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button p {{
                 display: none;
             }}
-            div[data-testid="stHorizontalBlock"]:has(.ag-mobile-header-marker) div[data-testid="stButton"] button [data-testid="stIconMaterial"] {{
+            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button [data-testid="stIconMaterial"] {{
                 margin: 0 !important;
                 font-size: 22px !important;
             }}
@@ -2110,9 +2102,9 @@ def _render_mobile_header() -> None:
     if mobile_nav_open:
         st.markdown('<span class="ag-mobile-nav-open"></span>', unsafe_allow_html=True)
 
+    st.markdown('<span class="ag-mobile-header-marker"></span>', unsafe_allow_html=True)
     menu_col, _spacer_col = st.columns([0.14, 0.86])
     with menu_col:
-        st.markdown('<span class="ag-mobile-header-marker"></span>', unsafe_allow_html=True)
         if st.button(
             "Close" if mobile_nav_open else "Menu",
             key="mobile_nav_toggle",
@@ -2164,8 +2156,7 @@ def _render_mobile_drawer() -> None:
         active_class = " ag-mobile-drawer-link--active" if page == current_page else ""
         links.append(
             f'<a class="ag-mobile-drawer-link{active_class}" '
-            f'href="?page={quote(page)}&menu=closed" target="_self">'
-            f'{icon}<span>{escape(label)}</span></a>'
+            f'href="?page={quote(page)}&menu=closed">{icon}<span>{escape(label)}</span></a>'
         )
 
     st.markdown(
@@ -2181,7 +2172,7 @@ def _render_mobile_drawer() -> None:
             <div class="ag-mobile-drawer-nav">
                 {''.join(links)}
             </div>
-            <a class="ag-mobile-drawer-close" href="?page={quote(str(current_page))}&menu=closed" target="_self">
+            <a class="ag-mobile-drawer-close" href="?page={quote(str(current_page))}&menu=closed">
                 Close menu
             </a>
         </nav>
