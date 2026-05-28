@@ -18,7 +18,7 @@ BAG_WEIGHT_KG = 60.0
 
 
 HOME_CONTEXT = {
-    "season": "Season 2026 - Bayer internal database",
+    "season": "Bayer Decision Simulator",
     "subtitle": (
         "Estimate soybean and corn productivity from farm location, soil pH, "
         "planting window, Open-Meteo climatic conditions, and Bayer internal "
