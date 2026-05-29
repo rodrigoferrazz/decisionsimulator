@@ -156,7 +156,7 @@ def _inject_styles() -> None:
             display: flex;
             flex-direction: column;
             box-sizing: border-box;
-            padding: 1.25rem 0 1rem !important;
+            padding-top: 1.25rem;
             overflow: hidden !important;
         }}
         div[data-testid="stSidebarUserContent"] div[data-testid="stVerticalBlock"]:has(.ag-sidebar-footer) {{
@@ -168,15 +168,8 @@ def _inject_styles() -> None:
         div[data-testid="stSidebarUserContent"] div[data-testid="stElementContainer"]:has(.ag-sidebar-footer) {{
             margin-top: auto !important;
         }}
-        div[data-testid="stSidebarUserContent"] div[data-testid="stElementContainer"]:has(div[data-testid="stButton"]),
-        section[data-testid="stSidebar"] div[data-testid="stButton"] {{
-            width: 100% !important;
-            max-width: 100% !important;
-        }}
         section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
-            width: 100% !important;
-            max-width: 100% !important;
-            box-sizing: border-box;
+            width: 100%;
             justify-content: flex-start;
             background: transparent !important;
             border: 0 !important;
@@ -1694,7 +1687,7 @@ def _render_sidebar() -> None:
                 label,
                 key=f"nav_{page}",
                 icon=material_icon,
-                use_container_width=True,
+                use_container_width=False,
             ):
                 st.session_state["active_page"] = page
                 st.query_params["page"] = page
