@@ -12,9 +12,6 @@ PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR))
 
 from src.decision_engine import DEFAULT_SCENARIO_PROBABILITIES  # noqa: E402
-from src.data.historical_indicators import (  # noqa: E402
-    get_crop_model_inputs,
-)
 from src.simulation_model import (  # noqa: E402
     build_decision_tree_simulation,
     build_payoff_matrix_simulation,
@@ -54,13 +51,14 @@ def test_favorable_forecast_increases_favorable_scenario_probability() -> None:
     assert result.simulation_method == "Decision Tree"
     assert result.decision_summary is None
     assert result.productivity_factors["base_productivity"] == 60.0
-    assert result.productivity_factors["decision_tree_expected_value"] == 60.75
-    assert result.expected_productivity_bags_ha == 61.0
+    assert result.productivity_factors["decision_tree_global_expected_value"] == 60.75
+    assert result.productivity_factors["decision_tree_expected_value"] == 68.0
+    assert result.expected_productivity_bags_ha == 68.0
     assert result.productivity_factors["decision_tree_adjustments"] == {
-        "planting_window": -0.2,
-        "climate": 0.75,
-        "soil_ph": -0.4,
-        "seed_potential": 0.6,
+        "planting_window": 0.0,
+        "climate": 4.0,
+        "soil_ph": 3.0,
+        "seed_potential": 1.0,
     }
     assert "spreadsheet decision tree" in result.recommendation_summary
 
@@ -114,6 +112,56 @@ def test_same_classification_forecasts_keep_spreadsheet_tree_expected_value() ->
     assert (
         low_rain_result.productivity_factors["weather_intensity_factor"]
         != high_rain_result.productivity_factors["weather_intensity_factor"]
+    )
+
+
+def test_decision_tree_path_changes_with_farm_inputs_and_climate() -> None:
+    favorable_result = build_weather_driven_simulation(
+        field_context={
+            "farm_latitude": -13.5277,
+            "farm_longitude": -56.0469,
+            "seed_type": "soybean",
+            "soil_ph": 6.2,
+            "planting_window": "Ideal",
+        },
+        forecast={
+            "daily": {
+                "time": ["2026-05-26", "2026-05-27", "2026-05-28"],
+                "temperature_2m_max": [27.0, 27.0, 27.0],
+                "temperature_2m_min": [18.0, 18.0, 18.0],
+                "precipitation_sum": [3.0, 3.0, 2.0],
+                "precipitation_probability_max": [35, 40, 35],
+                "weather_code": [2, 2, 2],
+                "et0_fao_evapotranspiration": [3.4, 3.6, 3.5],
+            }
+        },
+    )
+    unfavorable_result = build_weather_driven_simulation(
+        field_context={
+            "farm_latitude": -13.5277,
+            "farm_longitude": -56.0469,
+            "seed_type": "soybean",
+            "soil_ph": 4.4,
+            "planting_window": "Late",
+        },
+        forecast={
+            "daily": {
+                "time": ["2026-05-26", "2026-05-27", "2026-05-28"],
+                "temperature_2m_max": [35.0, 36.0, 34.0],
+                "temperature_2m_min": [24.0, 25.0, 24.0],
+                "precipitation_sum": [0.0, 0.0, 1.0],
+                "precipitation_probability_max": [5, 8, 10],
+                "weather_code": [0, 1, 1],
+                "et0_fao_evapotranspiration": [5.6, 5.9, 5.8],
+            }
+        },
+    )
+
+    assert favorable_result.expected_productivity_bags_ha == 68.0
+    assert unfavorable_result.expected_productivity_bags_ha == 48.0
+    assert (
+        favorable_result.productivity_factors["decision_tree_path"]
+        != unfavorable_result.productivity_factors["decision_tree_path"]
     )
 
 
@@ -201,8 +249,7 @@ def test_hot_dry_forecast_increases_unfavorable_probability_and_intensive_downsi
     assert payoff_matrix["Intensive Strategy"]["C3 - Unfavorable"] < 45.0
     assert payoff_matrix["Conservative Strategy"]["C3 - Unfavorable"] >= 58.0
     assert result.weather_evidence["classification"] == "Unfavorable"
-    corn_model = get_crop_model_inputs("corn")
-    assert result.expected_productivity_bags_ha < corn_model.median_yield
+    assert result.expected_productivity_bags_ha == 48.0
     assert "Decision Tree expected productivity" in result.recommendation_summary
     assert "base productivity of 60 bags/ha" in result.recommendation_summary
 
@@ -293,6 +340,7 @@ def test_payoff_matrix_simulation_uses_decision_summary_engine() -> None:
 if __name__ == "__main__":
     test_favorable_forecast_increases_favorable_scenario_probability()
     test_same_classification_forecasts_keep_spreadsheet_tree_expected_value()
+    test_decision_tree_path_changes_with_farm_inputs_and_climate()
     test_station_observations_adjust_productivity_and_evidence()
     test_hot_dry_forecast_increases_unfavorable_probability_and_intensive_downside()
     test_incomplete_forecast_uses_explicit_baseline_fallback()

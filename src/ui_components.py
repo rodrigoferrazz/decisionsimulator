@@ -2408,7 +2408,7 @@ def _simulation_method_description(simulation_method: str) -> str:
         )
     return (
         "The Decision Tree engine estimates productivity from the spreadsheet tree: "
-        "base productivity plus probability-weighted branch effects."
+        "base productivity plus selected branch effects."
     )
 
 
@@ -2891,18 +2891,7 @@ def _productivity_calculation_flow_html(
         float(simulation.expected_productivity_bags_ha)
     )
 
-    branch_notes = {
-        "planting_window": "Weighted from Early, Normal, and Late planting-window branches.",
-        "climate": "Weighted from Wet, Normal, and Dry climate branches.",
-        "soil_ph": "Weighted from Adequate, Borderline, and Critical soil pH branches.",
-        "seed_potential": "Weighted from High Potential, Intermediate, and Limited Potential seed branches.",
-    }
-    branch_labels = {
-        "planting_window": "Planting window effect",
-        "climate": "Climate effect",
-        "soil_ph": "Soil pH effect",
-        "seed_potential": "Seed potential effect",
-    }
+    selected_path = tuple(productivity_factors.get("decision_tree_path", ()))
 
     def _signed_value(value: float) -> str:
         return f"{value:+.2f} bags/ha"
@@ -2922,16 +2911,40 @@ def _productivity_calculation_flow_html(
         + f" = {raw_expected_productivity:.2f} -> {expected_productivity:.2f} bags/ha"
     )
 
-    adjustment_steps = tuple(
-        (
-            str(index),
-            branch_labels[key],
-            _signed_value(value),
-            branch_notes[key],
-            "",
+    if selected_path:
+        adjustment_steps = tuple(
+            (
+                str(index),
+                f"{step.get('label')}: {step.get('branch')}",
+                _signed_value(float(step.get("delta", 0.0))),
+                str(step.get("source", "")),
+                "",
+            )
+            for index, step in enumerate(selected_path, start=2)
         )
-        for index, (key, value) in enumerate(ordered_adjustments, start=2)
-    )
+    else:
+        branch_notes = {
+            "planting_window": "Selected from Early, Normal, and Late planting-window branches.",
+            "climate": "Selected from Wet, Normal, and Dry climate branches.",
+            "soil_ph": "Selected from Adequate, Borderline, and Critical soil pH branches.",
+            "seed_potential": "Selected from High Potential, Intermediate, and Limited Potential seed branches.",
+        }
+        branch_labels = {
+            "planting_window": "Planting window effect",
+            "climate": "Climate effect",
+            "soil_ph": "Soil pH effect",
+            "seed_potential": "Seed potential effect",
+        }
+        adjustment_steps = tuple(
+            (
+                str(index),
+                branch_labels[key],
+                _signed_value(value),
+                branch_notes[key],
+                "",
+            )
+            for index, (key, value) in enumerate(ordered_adjustments, start=2)
+        )
 
     steps = (
         (
@@ -2967,10 +2980,10 @@ def _productivity_calculation_flow_html(
         <p class="ag-flow-sub">
             The Decision Tree result is a productivity estimate, not a strategy
             payoff table. It follows the spreadsheet engine: base productivity
-            plus each probability-weighted branch effect.
+            plus the branch selected by the farm inputs and climate class.
         </p>
         <div class="ag-flow-equation">
-            Base + weighted branch effects = expected value
+            Base + selected branch effects = expected value
         </div>
         <div class="ag-flow-track">
             {steps_html}
@@ -3853,7 +3866,7 @@ def _build_productivity_summary_pdf(
         fill="#f3f8ef",
     )
     text(
-        f"Open-Meteo climate class: {simulation.climatic_condition}",
+        f"Decision Tree path using climate class: {simulation.climatic_condition}",
         margin + 24,
         y - 90,
         size=10,
@@ -3884,14 +3897,26 @@ def _build_productivity_summary_pdf(
     for label, value in weather_items:
         paragraph(f"{label}: {value}", margin, page_width - margin * 2, size=10, line_height=14)
 
-    section_title("Model factors")
-    factor_items = (
-        ("Decision Tree baseline", f"{_display_bags_per_hectare(float(productivity_factors.get('base_productivity', 0.0))):.2f} bags/ha"),
-        ("Climate factor", f"{float(productivity_factors.get('climate_factor', 1.0)):.2f}x"),
-        ("Weather intensity", f"{float(productivity_factors.get('weather_intensity_factor', 1.0)):.2f}x"),
-        ("Station adjustment", f"{float(productivity_factors.get('station_observation_factor', 1.0)):.3f}x"),
-        ("Soil pH factor", f"{float(productivity_factors.get('soil_ph_factor', 1.0)):.2f}x"),
-        ("Planting window factor", f"{float(productivity_factors.get('planting_window_factor', 1.0)):.2f}x"),
+    section_title("Decision Tree path")
+    selected_path = tuple(productivity_factors.get("decision_tree_path", ()))
+    factor_items = [
+        (
+            "Decision Tree baseline",
+            f"{_display_bags_per_hectare(float(productivity_factors.get('base_productivity', 0.0))):.2f} bags/ha",
+        )
+    ]
+    factor_items.extend(
+        (
+            f"{step.get('label')}: {step.get('branch')}",
+            f"{float(step.get('delta', 0.0)):+.2f} bags/ha",
+        )
+        for step in selected_path
+    )
+    factor_items.append(
+        (
+            "Expected value",
+            f"{_display_bags_per_hectare(float(productivity_factors.get('decision_tree_expected_value', expected_productivity))):.2f} bags/ha",
+        )
     )
     for label, value in factor_items:
         paragraph(f"{label}: {value}", margin, page_width - margin * 2, size=10, line_height=14)

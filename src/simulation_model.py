@@ -49,6 +49,10 @@ DECISION_TREE_BRANCHES = {
         ("Limited Potential", -3.0, 0.25),
     ),
 }
+DECISION_TREE_BRANCH_DELTAS = {
+    branch_name: {label: delta for label, delta, _ in branches}
+    for branch_name, branches in DECISION_TREE_BRANCHES.items()
+}
 
 
 @dataclass(frozen=True)
@@ -348,8 +352,20 @@ def _productivity_result(
     planting_window = str(field_context.get("planting_window", "Ideal") or "Ideal")
     base_productivity = DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA
     tree_expected_adjustments = _decision_tree_expected_adjustments()
-    raw_expected_productivity = base_productivity + sum(
+    selected_path = _decision_tree_selected_path(
+        field_context=field_context,
+        classification=classification,
+        soil_ph=soil_ph,
+        planting_window=planting_window,
+    )
+    selected_adjustments = {
+        step["key"]: float(step["delta"]) for step in selected_path
+    }
+    global_expected_productivity = base_productivity + sum(
         tree_expected_adjustments.values()
+    )
+    raw_expected_productivity = base_productivity + sum(
+        selected_adjustments.values()
     )
     climate_factor = round(
         crop_model.climate_factors.get(classification, 1.0)
@@ -377,8 +393,11 @@ def _productivity_result(
         "productivity_factors": {
             "base_productivity": base_productivity,
             "decision_tree_expected_value": raw_expected_productivity,
-            "decision_tree_adjustments": tree_expected_adjustments,
+            "decision_tree_global_expected_value": global_expected_productivity,
+            "decision_tree_adjustments": selected_adjustments,
+            "decision_tree_global_adjustments": tree_expected_adjustments,
             "decision_tree_branches": DECISION_TREE_BRANCHES,
+            "decision_tree_path": selected_path,
             "climate_factor": combined_climate_factor,
             "open_meteo_climate_factor": climate_factor,
             "weather_intensity_factor": weather_intensity_factor,
@@ -398,6 +417,95 @@ def _decision_tree_expected_adjustments() -> dict[str, float]:
         )
         for branch_name, branches in DECISION_TREE_BRANCHES.items()
     }
+
+
+def _decision_tree_selected_path(
+    *,
+    field_context: dict[str, object],
+    classification: str,
+    soil_ph: float,
+    planting_window: str,
+) -> tuple[dict[str, object], ...]:
+    planting_branch = _decision_tree_planting_branch(planting_window)
+    climate_branch = _decision_tree_climate_branch(classification)
+    soil_branch = _decision_tree_soil_branch(soil_ph)
+    seed_branch = _decision_tree_seed_branch(field_context.get("seed_potential"))
+
+    return (
+        _decision_tree_step(
+            "planting_window",
+            "Planting window",
+            planting_branch,
+            f"Input planting window: {planting_window}",
+        ),
+        _decision_tree_step(
+            "climate",
+            "Climatic conditions",
+            climate_branch,
+            f"Open-Meteo class: {classification}",
+        ),
+        _decision_tree_step(
+            "soil_ph",
+            "Soil pH",
+            soil_branch,
+            f"Input soil pH: {soil_ph:.1f}",
+        ),
+        _decision_tree_step(
+            "seed_potential",
+            "Type of seed",
+            seed_branch,
+            "Default seed potential when no seed-potential input is provided.",
+        ),
+    )
+
+
+def _decision_tree_step(
+    key: str,
+    label: str,
+    branch: str,
+    source: str,
+) -> dict[str, object]:
+    return {
+        "key": key,
+        "label": label,
+        "branch": branch,
+        "delta": DECISION_TREE_BRANCH_DELTAS[key][branch],
+        "source": source,
+    }
+
+
+def _decision_tree_planting_branch(planting_window: str) -> str:
+    normalized = planting_window.strip().lower()
+    if normalized == "early":
+        return "Early"
+    if normalized == "late":
+        return "Late"
+    return "Normal"
+
+
+def _decision_tree_climate_branch(classification: str) -> str:
+    if classification == "Favorable":
+        return "Wet"
+    if classification == "Unfavorable":
+        return "Dry"
+    return "Normal"
+
+
+def _decision_tree_soil_branch(soil_ph: float) -> str:
+    if 5.5 <= soil_ph <= 6.5:
+        return "Adequate"
+    if 5.0 <= soil_ph <= 5.4 or 6.6 <= soil_ph <= 6.8:
+        return "Borderline"
+    return "Critical"
+
+
+def _decision_tree_seed_branch(seed_potential: object) -> str:
+    normalized = str(seed_potential or "").strip().lower()
+    if normalized in {"high", "high potential", "alto potencial"}:
+        return "High Potential"
+    if normalized in {"limited", "limited potential", "baixo potencial"}:
+        return "Limited Potential"
+    return "Intermediate"
 
 
 def _normalize_seed_type(seed_type: object) -> str:
@@ -550,8 +658,8 @@ def _decision_tree_recommendation_summary(
         f"Decision Tree expected productivity is {expected_productivity:.2f} "
         "bags/ha. The calculation follows the spreadsheet decision tree: base "
         f"productivity of {DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA:.0f} bags/ha "
-        "plus the probability-weighted branch effects for planting window, "
-        f"climate, soil pH, and seed potential. Raw expected value before "
+        "plus the selected branch effects for planting window, climate, soil pH, "
+        f"and seed potential. Raw expected value before "
         f"rounding: {raw_expected_productivity:.2f} bags/ha."
     )
 
