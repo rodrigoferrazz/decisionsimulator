@@ -2407,8 +2407,8 @@ def _simulation_method_description(simulation_method: str) -> str:
             "Expected Value and Minimax using forecast-derived scenario probabilities."
         )
     return (
-        "The Decision Tree engine estimates productivity from farm location, seed "
-        "type, soil pH, planting window, Open-Meteo climate signals, and station data."
+        "The Decision Tree engine estimates productivity from the spreadsheet tree: "
+        "base productivity plus probability-weighted branch effects."
     )
 
 
@@ -2830,10 +2830,16 @@ def _productivity_summary_html(simulation, field_context: dict[str, object]) -> 
         raw_productivity=float(simulation.expected_productivity_bags_ha),
         display_productivity=expected_productivity,
     )
+    simulation_method = getattr(simulation, "simulation_method", DECISION_TREE_METHOD)
+    eyebrow = (
+        "Decision Tree expected value from spreadsheet branches"
+        if simulation_method == DECISION_TREE_METHOD
+        else f"Open-Meteo climate class: {simulation.climatic_condition}"
+    )
     return f"""
     <div class="ag-consensus">
         <div class="ag-consensus-left">
-            <div class="ag-consensus-eyebrow">Open-Meteo climate class: {escape(simulation.climatic_condition)}</div>
+            <div class="ag-consensus-eyebrow">{escape(eyebrow)}</div>
             <div class="ag-consensus-title">{escape(seed_label)} forecast: <em>{expected_productivity:.2f} bags/ha</em></div>
             <p class="ag-consensus-sub">{escape(recommendation_summary)}</p>
             <div class="ag-consensus-meta">
@@ -2869,86 +2875,78 @@ def _productivity_calculation_flow_html(
 ) -> str:
     """Return a linear explanation of the Decision Tree productivity estimate."""
     productivity_factors = dict(simulation.productivity_factors)
-    weather_evidence = dict(simulation.weather_evidence)
-    station = dict(weather_evidence.get("station_observation", {}))
-
-    seed_label = _seed_type_label(str(field_context.get("seed_type", "soybean")))
-    soil_ph = float(field_context.get("soil_ph", 0.0) or 0.0)
-    planting_window = str(field_context.get("planting_window", "Ideal") or "Ideal")
     base_productivity = _display_bags_per_hectare(
         float(productivity_factors.get("base_productivity", 0.0))
     )
-    open_meteo_factor = float(
-        productivity_factors.get(
-            "open_meteo_climate_factor",
-            productivity_factors.get("climate_factor", 1.0),
+    adjustments = dict(productivity_factors.get("decision_tree_adjustments", {}))
+    raw_expected_productivity = _display_bags_per_hectare(
+        float(
+            productivity_factors.get(
+                "decision_tree_expected_value",
+                base_productivity + sum(float(value) for value in adjustments.values()),
+            )
         )
     )
-    station_factor = float(productivity_factors.get("station_observation_factor", 1.0))
-    soil_factor = float(productivity_factors.get("soil_ph_factor", 1.0))
-    window_factor = float(productivity_factors.get("planting_window_factor", 1.0))
     expected_productivity = _display_bags_per_hectare(
         float(simulation.expected_productivity_bags_ha)
     )
-    climate_class = str(weather_evidence.get("classification", simulation.climatic_condition))
-    forecast_days = weather_evidence.get("forecast_days", "n/a")
-    station_note = (
-        "Local station data calibrated the forecast."
-        if station.get("available")
-        else "No station calibration was applied."
-    )
-    soil_note = (
-        f"Soil pH {soil_ph:.1f} is within the preferred range."
-        if soil_factor >= 1
-        else f"Soil pH {soil_ph:.1f} reduces the estimate."
-    )
+
+    branch_notes = {
+        "planting_window": "Weighted from Early, Normal, and Late planting-window branches.",
+        "climate": "Weighted from Wet, Normal, and Dry climate branches.",
+        "soil_ph": "Weighted from Adequate, Borderline, and Critical soil pH branches.",
+        "seed_potential": "Weighted from High Potential, Intermediate, and Limited Potential seed branches.",
+    }
+    branch_labels = {
+        "planting_window": "Planting window effect",
+        "climate": "Climate effect",
+        "soil_ph": "Soil pH effect",
+        "seed_potential": "Seed potential effect",
+    }
+
+    def _signed_value(value: float) -> str:
+        return f"{value:+.2f} bags/ha"
+
+    def _formula_term(value: float) -> str:
+        if value < 0:
+            return f" - {abs(value):.2f}"
+        return f" + {value:.2f}"
+
+    ordered_adjustments = [
+        (key, float(adjustments.get(key, 0.0)))
+        for key in ("planting_window", "climate", "soil_ph", "seed_potential")
+    ]
     formula = (
-        f"{base_productivity:.2f} x {open_meteo_factor:.4f} x "
-        f"{station_factor:.4f} x {soil_factor:.4f} x {window_factor:.4f} "
-        f"= {expected_productivity:.2f} bags/ha"
+        f"{base_productivity:.2f}"
+        + "".join(_formula_term(value) for _, value in ordered_adjustments)
+        + f" = {raw_expected_productivity:.2f} -> {expected_productivity:.2f} bags/ha"
+    )
+
+    adjustment_steps = tuple(
+        (
+            str(index),
+            branch_labels[key],
+            _signed_value(value),
+            branch_notes[key],
+            "",
+        )
+        for index, (key, value) in enumerate(ordered_adjustments, start=2)
     )
 
     steps = (
         (
             "1",
-            "Crop baseline",
+            "Base productivity",
             f"{base_productivity:.2f} bags/ha",
-            f"{seed_label} Decision Tree starting point before adjustments.",
+            "Spreadsheet Decision Tree starting point.",
             "",
         ),
-        (
-            "2",
-            "Open-Meteo climate",
-            f"{open_meteo_factor:.4f}x",
-            f"{climate_class} class from {forecast_days} forecast days.",
-            "",
-        ),
-        (
-            "3",
-            "Station calibration",
-            f"{station_factor:.4f}x",
-            station_note,
-            "",
-        ),
-        (
-            "4",
-            "Soil pH fit",
-            f"{soil_factor:.4f}x",
-            soil_note,
-            "",
-        ),
-        (
-            "5",
-            "Planting window",
-            f"{window_factor:.4f}x",
-            f"{planting_window} planting window adjustment.",
-            "",
-        ),
+        *adjustment_steps,
         (
             "6",
-            "Final forecast",
+            "Final expected value",
             f"{expected_productivity:.2f} bags/ha",
-            "This is the number shown in the green recommendation card.",
+            f"Raw value {raw_expected_productivity:.2f} bags/ha rounded for display.",
             " ag-flow-step--final",
         ),
     )
@@ -2968,11 +2966,11 @@ def _productivity_calculation_flow_html(
         <h3>How we reached {expected_productivity:.2f} bags/ha</h3>
         <p class="ag-flow-sub">
             The Decision Tree result is a productivity estimate, not a strategy
-            payoff table. It starts from the crop baseline and applies each
-            agronomic and climate adjustment once.
+            payoff table. It follows the spreadsheet engine: base productivity
+            plus each probability-weighted branch effect.
         </p>
         <div class="ag-flow-equation">
-            Baseline x Open-Meteo x Station x Soil pH x Planting window = Forecast
+            Base + weighted branch effects = expected value
         </div>
         <div class="ag-flow-track">
             {steps_html}
@@ -2982,7 +2980,7 @@ def _productivity_calculation_flow_html(
     """).strip()
 
 
-def _productivity_factors_html(productivity_factors: dict[str, float]) -> str:
+def _productivity_factors_html(productivity_factors: dict[str, object]) -> str:
     """Return the simple factor breakdown behind the productivity estimate."""
     base_productivity = _display_bags_per_hectare(
         float(productivity_factors.get("base_productivity", 0.0))

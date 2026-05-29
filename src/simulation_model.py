@@ -27,6 +27,28 @@ from src.decision_engine import (
 DECISION_TREE_METHOD = "Decision Tree"
 PAYOFF_MATRIX_METHOD = "Payoff Matrix"
 DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA = 60.0
+DECISION_TREE_BRANCHES = {
+    "planting_window": (
+        ("Early", 2.0, 0.30),
+        ("Normal", 0.0, 0.50),
+        ("Late", -4.0, 0.20),
+    ),
+    "climate": (
+        ("Wet", 4.0, 0.25),
+        ("Normal", 2.0, 0.50),
+        ("Dry", -5.0, 0.25),
+    ),
+    "soil_ph": (
+        ("Adequate", 3.0, 0.24),
+        ("Borderline", 0.0, 0.48),
+        ("Critical", -4.0, 0.28),
+    ),
+    "seed_potential": (
+        ("High Potential", 3.0, 0.30),
+        ("Intermediate", 1.0, 0.45),
+        ("Limited Potential", -3.0, 0.25),
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -40,7 +62,7 @@ class WeatherDrivenSimulation:
     climatic_condition: str
     expected_productivity_bags_ha: float
     recommendation_summary: str
-    productivity_factors: dict[str, float]
+    productivity_factors: dict[str, object]
     decision_summary: DecisionSummary | None = None
 
 
@@ -325,6 +347,10 @@ def _productivity_result(
     soil_ph = float(field_context.get("soil_ph", 6.2) or 6.2)
     planting_window = str(field_context.get("planting_window", "Ideal") or "Ideal")
     base_productivity = DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA
+    tree_expected_adjustments = _decision_tree_expected_adjustments()
+    raw_expected_productivity = base_productivity + sum(
+        tree_expected_adjustments.values()
+    )
     climate_factor = round(
         crop_model.climate_factors.get(classification, 1.0)
         * weather_intensity_factor,
@@ -340,22 +366,19 @@ def _productivity_result(
         soil_ph_max=crop_model.soil_ph_max,
     )
     window_factor = crop_model.planting_window_factors.get(planting_window, 1.0)
-    expected_productivity = round(
-        base_productivity * combined_climate_factor * soil_factor * window_factor,
-        2,
-    )
+    expected_productivity = float(round(raw_expected_productivity))
 
     return {
         "expected_productivity_bags_ha": expected_productivity,
-        "recommendation_summary": _recommendation_summary(
-            seed_type=seed_type,
-            classification=classification,
-            soil_ph=soil_ph,
-            planting_window=planting_window,
+        "recommendation_summary": _decision_tree_recommendation_summary(
             expected_productivity=expected_productivity,
+            raw_expected_productivity=raw_expected_productivity,
         ),
         "productivity_factors": {
             "base_productivity": base_productivity,
+            "decision_tree_expected_value": raw_expected_productivity,
+            "decision_tree_adjustments": tree_expected_adjustments,
+            "decision_tree_branches": DECISION_TREE_BRANCHES,
             "climate_factor": combined_climate_factor,
             "open_meteo_climate_factor": climate_factor,
             "weather_intensity_factor": weather_intensity_factor,
@@ -364,6 +387,16 @@ def _productivity_result(
             "planting_window_factor": window_factor,
             "bayer_records": crop_model.record_count,
         },
+    }
+
+
+def _decision_tree_expected_adjustments() -> dict[str, float]:
+    return {
+        branch_name: round(
+            sum(delta * probability for _, delta, probability in branches),
+            4,
+        )
+        for branch_name, branches in DECISION_TREE_BRANCHES.items()
     }
 
 
@@ -505,6 +538,21 @@ def _recommendation_summary(
         f"{crop_label} expected productivity is {expected_productivity:.2f} bags/ha. "
         f"The Open-Meteo forecast classifies climatic conditions as {classification}; "
         f"{ph_note}, and {window_note}. Recommendation: {climate_note}."
+    )
+
+
+def _decision_tree_recommendation_summary(
+    *,
+    expected_productivity: float,
+    raw_expected_productivity: float,
+) -> str:
+    return (
+        f"Decision Tree expected productivity is {expected_productivity:.2f} "
+        "bags/ha. The calculation follows the spreadsheet decision tree: base "
+        f"productivity of {DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA:.0f} bags/ha "
+        "plus the probability-weighted branch effects for planting window, "
+        f"climate, soil pH, and seed potential. Raw expected value before "
+        f"rounding: {raw_expected_productivity:.2f} bags/ha."
     )
 
 
