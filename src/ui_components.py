@@ -665,9 +665,20 @@ def _inject_styles() -> None:
             border: 1px solid #c7dec5;
             box-shadow: 0 8px 24px -18px rgba(31, 63, 45, 0.38);
         }}
-        header[data-testid="stHeader"] {{
-            background: var(--ag-surface);
-            border-bottom: 1px solid var(--ag-line);
+        header[data-testid="stHeader"],
+        div[data-testid="stToolbar"],
+        div[data-testid="stDecoration"],
+        div[data-testid="stStatusWidget"],
+        div[data-testid="stDeployButton"],
+        #MainMenu,
+        footer {{
+            display: none !important;
+            visibility: hidden !important;
+            height: 0 !important;
+            min-height: 0 !important;
+        }}
+        div[data-testid="stAppViewContainer"] {{
+            padding-top: 0 !important;
         }}
         div[data-testid="stMetricValue"] {{
             color: {TEXT};
