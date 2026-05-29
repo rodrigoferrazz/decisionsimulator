@@ -74,15 +74,7 @@ def render_app_shell() -> None:
     query_page = st.query_params.get("page")
     if query_page in PAGE_NAMES:
         st.session_state["active_page"] = query_page
-    if st.query_params.get("menu") == "closed":
-        st.session_state["mobile_nav_open"] = False
-        try:
-            del st.query_params["menu"]
-        except KeyError:
-            pass
 
-    _render_mobile_header()
-    _render_mobile_drawer()
     _render_sidebar()
 
     page = st.session_state.get("active_page", "Home")
@@ -124,17 +116,8 @@ def _inject_styles() -> None:
             color: var(--ag-ink);
             font-family: var(--ag-ui);
         }}
-        .ag-mobile-nav-open,
-        .ag-mobile-drawer-title,
-        .ag-mobile-drawer,
-        .ag-mobile-close-marker,
-        .ag-mobile-header-marker,
         .ag-nav-active-marker,
-        div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker),
-        div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"],
-        div[data-testid="stElementContainer"]:has(.ag-nav-active-marker),
-        div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker),
-        div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] {{
+        div[data-testid="stElementContainer"]:has(.ag-nav-active-marker) {{
             display: none !important;
         }}
         section[data-testid="stSidebar"] {{
@@ -1587,483 +1570,6 @@ def _inject_styles() -> None:
                 transform: translate(18px, 10px);
             }}
         }}
-        @media (max-width: 1100px) {{
-            .ag-consensus,
-            .ag-criteria-grid {{
-                grid-template-columns: 1fr;
-            }}
-            .ag-consensus-right {{
-                flex-direction: row;
-                justify-content: flex-start;
-            }}
-            .ag-consensus-meta {{
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }}
-            .ag-glance-grid {{
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }}
-            .ag-history-grid {{
-                max-width: none;
-            }}
-            .ag-metric-grid,
-            .ag-metric-grid--five,
-            .ag-metric-grid--six {{
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }}
-            .ag-compare-summary,
-            .ag-compare-cards,
-            .ag-source-grid {{
-                grid-template-columns: 1fr;
-            }}
-            .ag-compare-card-grid {{
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }}
-            .ag-save-toast {{
-                bottom: 16px;
-                right: 16px;
-                left: 16px;
-                width: auto;
-            }}
-        }}
-        @media (max-width: 700px) {{
-            .block-container {{
-                padding: 0.75rem 0.9rem 2rem;
-                max-width: 100%;
-            }}
-            .ag-mobile-nav-open {{
-                display: block !important;
-                position: fixed;
-                inset: 0;
-                z-index: 99980;
-                background: rgba(15, 23, 42, 0.34);
-                backdrop-filter: blur(2px);
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) {{
-                display: block !important;
-                height: 0;
-                margin: 0;
-                padding: 0;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] {{
-                display: flex !important;
-                flex-direction: row !important;
-                align-items: center;
-                gap: 0.75rem;
-                position: sticky;
-                top: 0;
-                z-index: 100000;
-                margin: -0.75rem -0.9rem 1rem;
-                padding: 0.65rem 0.9rem;
-                background: rgba(255, 254, 250, 0.96);
-                border-bottom: 1px solid var(--ag-line);
-                backdrop-filter: blur(12px);
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] > div:first-child {{
-                width: auto !important;
-                flex: 0 0 auto !important;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] > div:last-child {{
-                display: none !important;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] {{
-                width: auto !important;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button {{
-                width: 44px !important;
-                min-width: 44px !important;
-                height: 44px !important;
-                min-height: 44px !important;
-                padding: 0 !important;
-                border-radius: 12px !important;
-                display: inline-flex;
-                justify-content: center;
-                align-items: center;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button p {{
-                display: none;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-header-marker) + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] button [data-testid="stIconMaterial"] {{
-                margin: 0 !important;
-                font-size: 22px !important;
-            }}
-            .ag-mobile-brand {{
-                display: none !important;
-            }}
-            .ag-mobile-logo {{
-                width: 40px;
-                height: 40px;
-                border-radius: 11px;
-                display: grid;
-                place-items: center;
-                flex-shrink: 0;
-                background: linear-gradient(155deg, var(--ag-leaf), var(--ag-leaf-dark));
-            }}
-            .ag-mobile-brand-name {{
-                font-family: var(--ag-serif);
-                font-size: 1.55rem;
-                line-height: 1;
-                color: var(--ag-ink);
-            }}
-            .ag-mobile-brand-tag {{
-                font-size: 0.58rem;
-                letter-spacing: 0.12em;
-                text-transform: uppercase;
-                color: var(--ag-muted);
-                margin-top: 0.18rem;
-                white-space: nowrap;
-            }}
-            section[data-testid="stSidebar"] {{
-                display: none !important;
-            }}
-            .ag-mobile-drawer {{
-                display: flex !important;
-                position: fixed;
-                inset: 0 auto 0 0;
-                z-index: 100010;
-                width: 80vw;
-                max-width: 360px;
-                min-width: 280px;
-                height: 100dvh;
-                box-sizing: border-box;
-                padding: 2rem 0.9rem 1rem;
-                flex-direction: column;
-                background: #fffefa;
-                border-right: 1px solid var(--ag-line);
-                border-radius: 0 22px 22px 0;
-                box-shadow: 22px 0 54px -30px rgba(15, 23, 42, 0.72);
-                animation: ag-mobile-drawer-in 180ms ease-out;
-            }}
-            @keyframes ag-mobile-drawer-in {{
-                from {{
-                    transform: translateX(-100%);
-                }}
-                to {{
-                    transform: translateX(0);
-                }}
-            }}
-            .ag-mobile-profile {{
-                display: flex;
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 0.68rem;
-                padding: 0.15rem 0.2rem 1.65rem;
-            }}
-            .ag-mobile-profile-logo {{
-                width: 58px;
-                height: 58px;
-                border-radius: 50%;
-                display: grid;
-                place-items: center;
-                background: linear-gradient(155deg, var(--ag-leaf), var(--ag-leaf-dark));
-                box-shadow: 0 8px 18px -12px rgba(31, 63, 45, 0.65);
-            }}
-            .ag-mobile-profile-name {{
-                color: var(--ag-ink);
-                font-size: 1.22rem;
-                line-height: 1;
-                font-weight: 800;
-            }}
-            .ag-mobile-profile-sub {{
-                color: var(--ag-muted);
-                font-size: 0.72rem;
-                margin-top: 0.2rem;
-            }}
-            .ag-mobile-drawer-nav {{
-                display: flex;
-                flex-direction: column;
-                gap: 0.3rem;
-            }}
-            .ag-mobile-drawer-link {{
-                display: flex;
-                align-items: center;
-                gap: 0.6rem;
-                min-height: 42px;
-                padding: 0.48rem 0.5rem;
-                border-radius: 10px;
-                color: var(--ag-ink) !important;
-                text-decoration: none !important;
-                font-size: 0.86rem;
-                font-weight: 700;
-            }}
-            .ag-mobile-drawer-link:hover,
-            .ag-mobile-drawer-link--active {{
-                background: var(--ag-leaf-soft);
-                color: var(--ag-leaf-dark) !important;
-            }}
-            .ag-mobile-drawer-link svg {{
-                width: 18px;
-                height: 18px;
-                color: currentColor;
-                flex-shrink: 0;
-            }}
-            .ag-mobile-drawer-close {{
-                margin-top: auto;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                min-height: 42px;
-                border-radius: 999px;
-                background: #f2f1ef;
-                color: var(--ag-ink) !important;
-                text-decoration: none !important;
-                font-size: 0.78rem;
-                font-weight: 800;
-            }}
-            section[data-testid="stSidebar"] > div,
-            div[data-testid="stSidebarContent"],
-            div[data-testid="stSidebarUserContent"],
-            div[data-testid="stSidebarUserContent"] div[data-testid="stVerticalBlock"]:has(.ag-sidebar-footer) {{
-                height: 100%;
-                min-height: 0;
-                overflow-y: auto !important;
-            }}
-            div[data-testid="stSidebarUserContent"] {{
-                padding: 2rem 0.9rem 1rem;
-            }}
-            section[data-testid="stSidebar"] .ag-brand {{
-                display: flex;
-                flex-direction: column;
-                justify-content: flex-start;
-                align-items: flex-start;
-                gap: 0.65rem;
-                text-align: left;
-                padding: 0.2rem 0.15rem 1.35rem;
-            }}
-            section[data-testid="stSidebar"] .ag-logo {{
-                width: 56px;
-                height: 56px;
-                border-radius: 50%;
-                box-shadow: 0 8px 18px -12px rgba(31, 63, 45, 0.65);
-            }}
-            section[data-testid="stSidebar"] .ag-brand-name {{
-                font-family: var(--ag-ui);
-                font-size: 1.28rem;
-                font-weight: 800;
-            }}
-            section[data-testid="stSidebar"] .ag-brand-tag {{
-                font-size: 0.72rem;
-                letter-spacing: 0;
-                text-transform: none;
-                margin-top: 0.15rem;
-            }}
-            .ag-mobile-drawer-title {{
-                display: block !important;
-                color: var(--ag-muted);
-                font-size: 0.68rem;
-                font-weight: 800;
-                letter-spacing: 0.14em;
-                text-transform: uppercase;
-                padding: 0.15rem 0.25rem 0.8rem;
-            }}
-            .ag-sidebar-footer {{
-                display: none;
-            }}
-            section[data-testid="stSidebar"] hr {{
-                display: none;
-            }}
-            .ag-nav {{
-                gap: 0.35rem;
-                margin: 0;
-            }}
-            section[data-testid="stSidebar"] div[data-testid="stButton"] button {{
-                min-height: 44px;
-                padding: 0.55rem 0.45rem;
-                border: 1px solid transparent !important;
-                border-radius: 9px;
-                font-size: 0.86rem;
-                margin-bottom: 0.15rem;
-                gap: 0.5rem;
-            }}
-            section[data-testid="stSidebar"] div[data-testid="stButton"] button:hover {{
-                border-color: #dbe7d7 !important;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-nav-active-marker) + div[data-testid="stElementContainer"] button {{
-                border-color: #cfe3ca !important;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-nav-active-marker) + div[data-testid="stElementContainer"] button::before {{
-                display: none;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) {{
-                display: block !important;
-                margin-top: auto !important;
-                padding-top: 2rem;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"] {{
-                display: block !important;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"] button {{
-                justify-content: center !important;
-                min-height: 42px;
-                border-radius: 999px !important;
-                background: #f2f1ef !important;
-                color: var(--ag-ink) !important;
-                font-size: 0.78rem;
-                font-weight: 700;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"] button:hover {{
-                background: #e8e6e1 !important;
-            }}
-            div[data-testid="stElementContainer"]:has(.ag-mobile-close-marker) + div[data-testid="stElementContainer"] button::before {{
-                display: none;
-            }}
-            section[data-testid="stSidebar"] div[data-testid="stButton"] button:disabled::before {{
-                left: 0.2rem;
-                top: 10px;
-                bottom: 10px;
-                width: 4px;
-                border-radius: 0 4px 4px 0;
-            }}
-            section[data-testid="stSidebar"] div[data-testid="stButton"] button [data-testid="stIconMaterial"],
-            .ag-nav-icon {{
-                width: 30px;
-                height: 30px;
-                border-radius: 8px;
-            }}
-            h1 {{
-                font-size: 2.25rem !important;
-                line-height: 1.08 !important;
-            }}
-            h2 {{
-                font-size: 1.65rem !important;
-            }}
-            .ag-start-title {{
-                font-size: 2rem;
-                margin: 0.35rem 0 1rem;
-            }}
-            .ag-gs-grid,
-            .ag-glance-grid,
-            .ag-history-grid,
-            .ag-source-grid,
-            .ag-compare-summary,
-            .ag-compare-cards,
-            .ag-metric-grid,
-            .ag-metric-grid--five,
-            .ag-metric-grid--six,
-            .ag-consensus-meta,
-            .ag-compare-card-grid,
-            .ag-source-metrics {{
-                grid-template-columns: 1fr;
-            }}
-            div[data-testid="stHorizontalBlock"] {{
-                flex-direction: column;
-            }}
-            div[data-testid="stHorizontalBlock"] > div {{
-                width: 100% !important;
-                flex: 1 1 100% !important;
-            }}
-            .ag-card,
-            .ag-info-card,
-            .ag-history-card,
-            .ag-source-card,
-            .ag-compare-card,
-            .ag-criterion,
-            div[data-testid="stVerticalBlock"]:has(.ag-sim-card-marker) {{
-                border-radius: 12px;
-                padding: 1rem;
-                min-height: 0;
-            }}
-            .ag-gs-card {{
-                border-radius: 14px;
-                min-height: 0;
-                padding: 1.05rem;
-            }}
-            .ag-glance-card {{
-                border-radius: 12px;
-                padding: 1rem;
-            }}
-            .ag-page-head,
-            .ag-compare-card-head,
-            .ag-source-card-head,
-            .ag-savebar {{
-                flex-direction: column;
-                align-items: stretch;
-            }}
-            div[data-testid="stVerticalBlock"]:has(.ag-header-action-marker)
-            div[data-testid="stButton"] {{
-                margin-top: 0;
-            }}
-            .ag-consensus {{
-                border-radius: 14px;
-                padding: 1.15rem;
-                gap: 1rem;
-            }}
-            .ag-consensus-title {{
-                font-size: 2rem;
-                overflow-wrap: anywhere;
-            }}
-            .ag-consensus-right {{
-                display: none;
-            }}
-            .ag-weather-strip {{
-                display: grid;
-                grid-template-columns: 1fr;
-                font-size: 0.84rem;
-            }}
-            .ag-weather-strip > span {{
-                display: block;
-            }}
-            .ag-criterion-head {{
-                grid-template-columns: 38px 1fr;
-                gap: 0.7rem;
-            }}
-            .ag-criterion-badge {{
-                width: 38px;
-                height: 38px;
-                border-radius: 10px;
-                font-size: 1.1rem;
-            }}
-            .ag-criterion-title {{
-                font-size: 1.35rem;
-            }}
-            .ag-criterion-alt,
-            .ag-criterion-metric {{
-                align-items: flex-start;
-                flex-direction: column;
-                gap: 0.35rem;
-            }}
-            .ag-criterion-alt-name {{
-                font-size: 1.45rem;
-            }}
-            .ag-criterion-formula,
-            .ag-dmatrix {{
-                overflow-x: auto;
-            }}
-            .ag-dmatrix-row,
-            .ag-dmatrix-head {{
-                min-width: 620px;
-            }}
-            .ag-compare-table {{
-                min-width: 760px;
-            }}
-            .ag-risk-row {{
-                grid-template-columns: 1fr;
-                gap: 0.45rem;
-            }}
-            .ag-bar {{
-                width: 100%;
-            }}
-            .ag-form-caption {{
-                font-size: 0.85rem;
-                margin-top: 1rem;
-            }}
-            div[data-testid="stButton"] button,
-            div[data-testid="stDownloadButton"] button {{
-                min-height: 44px;
-                white-space: normal;
-            }}
-            .ag-save-toast {{
-                bottom: 12px;
-                right: 12px;
-                left: 12px;
-                width: auto;
-                grid-template-columns: 32px 1fr;
-                padding: 0.8rem;
-            }}
-            .ag-save-toast-icon {{
-                width: 32px;
-                height: 32px;
-            }}
-        }}
         div[data-baseweb="select"] > div {{
             background: var(--ag-surface) !important;
             border-color: var(--ag-line) !important;
@@ -2096,91 +1602,6 @@ def _agrovision_logo_svg(size: int = 26) -> str:
     )
 
 
-def _render_mobile_header() -> None:
-    """Render the mobile-only top bar that opens the navigation drawer."""
-    mobile_nav_open = bool(st.session_state.get("mobile_nav_open", False))
-    if mobile_nav_open:
-        st.markdown('<span class="ag-mobile-nav-open"></span>', unsafe_allow_html=True)
-
-    st.markdown('<span class="ag-mobile-header-marker"></span>', unsafe_allow_html=True)
-    menu_col, _spacer_col = st.columns([0.14, 0.86])
-    with menu_col:
-        if st.button(
-            "Close" if mobile_nav_open else "Menu",
-            key="mobile_nav_toggle",
-            icon=":material/close:" if mobile_nav_open else ":material/menu:",
-        ):
-            st.session_state["mobile_nav_open"] = not mobile_nav_open
-            st.rerun()
-
-
-def _render_mobile_drawer() -> None:
-    """Render the mobile drawer independently from Streamlit's native sidebar."""
-    if not st.session_state.get("mobile_nav_open", False):
-        return
-
-    current_page = st.session_state.get("active_page", "Home")
-    nav_items = (
-        (
-            "Home",
-            "Home",
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-            '<path d="m3 9 9-7 9 7"/><path d="M9 22V12h6v10"/>'
-            '<path d="M21 9v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9"/></svg>',
-        ),
-        (
-            "Start Simulation",
-            "Start Simulation",
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-            '<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
-        ),
-        (
-            "Historical Insights",
-            "Historical Insights",
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-            '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
-        ),
-        (
-            "Compare Simulations",
-            "Compare Simulations",
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-            '<path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>',
-        ),
-    )
-    links = []
-    for page, label, icon in nav_items:
-        active_class = " ag-mobile-drawer-link--active" if page == current_page else ""
-        links.append(
-            f'<a class="ag-mobile-drawer-link{active_class}" '
-            f'href="?page={quote(page)}&menu=closed">{icon}<span>{escape(label)}</span></a>'
-        )
-
-    st.markdown(
-        f"""
-        <nav class="ag-mobile-drawer" aria-label="Mobile navigation">
-            <div class="ag-mobile-profile">
-                <div class="ag-mobile-profile-logo">{_agrovision_logo_svg(28)}</div>
-                <div>
-                    <div class="ag-mobile-profile-name">AgroVision</div>
-                    <div class="ag-mobile-profile-sub">Precision Planting</div>
-                </div>
-            </div>
-            <div class="ag-mobile-drawer-nav">
-                {''.join(links)}
-            </div>
-            <a class="ag-mobile-drawer-close" href="?page={quote(str(current_page))}&menu=closed">
-                Close menu
-            </a>
-        </nav>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def _render_sidebar() -> None:
     """Render the left navigation and update the selected app section."""
     with st.sidebar:
@@ -2197,10 +1618,6 @@ def _render_sidebar() -> None:
             unsafe_allow_html=True,
         )
         st.divider()
-        st.markdown(
-            '<div class="ag-mobile-drawer-title">Navigation</div>',
-            unsafe_allow_html=True,
-        )
 
         _icon_home = (
             '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
@@ -2259,21 +1676,12 @@ def _render_sidebar() -> None:
                 label,
                 key=f"nav_{page}",
                 icon=material_icon,
-                use_container_width=True,
+                use_container_width=False,
             ):
                 st.session_state["active_page"] = page
-                st.session_state["mobile_nav_open"] = False
                 st.query_params["page"] = page
                 st.rerun()
         st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown(
-            '<span class="ag-mobile-close-marker"></span>',
-            unsafe_allow_html=True,
-        )
-        if st.button("Close menu", key="mobile_nav_close", use_container_width=True):
-            st.session_state["mobile_nav_open"] = False
-            st.rerun()
 
 
 def _render_home_page() -> None:
@@ -2459,12 +1867,12 @@ def _render_start_simulation_page() -> None:
             run_decision_tree = st.button(
                 "Simulate - Decision Tree",
                 type="primary",
-                use_container_width=True,
+                use_container_width=False,
             )
         with action_col_b:
             run_payoff_matrix = st.button(
                 "Simulate - Payoff Matrix",
-                use_container_width=True,
+                use_container_width=False,
             )
 
         if run_decision_tree or run_payoff_matrix:
@@ -2707,7 +2115,7 @@ def _render_compare_strategies_page() -> None:
             plot_bgcolor=SURFACE,
             font_color=TEXT,
         )
-        st.plotly_chart(fig, use_container_width=True, theme=None)
+        st.plotly_chart(fig, use_container_width=False, theme=None)
 
     with chart_cols[1]:
         st.subheader("Minimax Regret")
@@ -2729,10 +2137,10 @@ def _render_compare_strategies_page() -> None:
             plot_bgcolor=SURFACE,
             font_color=TEXT,
         )
-        st.plotly_chart(fig, use_container_width=True, theme=None)
+        st.plotly_chart(fig, use_container_width=False, theme=None)
 
     st.subheader("Payoff Matrix")
-    st.dataframe(_payoff_matrix_dataframe(payoff_matrix), use_container_width=True)
+    st.dataframe(_payoff_matrix_dataframe(payoff_matrix), use_container_width=False)
 
     st.subheader("Risk and Confidence Indicators")
     for alternative in payoff_matrix:
@@ -2836,7 +2244,7 @@ def _render_productivity_recommendation_page(simulation) -> None:
         )
     with save_col:
         st.markdown('<div class="ag-header-action-marker"></div>', unsafe_allow_html=True)
-        if st.button("Save Simulation", use_container_width=True):
+        if st.button("Save Simulation", use_container_width=False):
             saved_snapshot = _save_simulation_snapshot(simulation, field_context)
             saved_toast = _save_simulation_toast_html(saved_snapshot)
 
@@ -2895,7 +2303,7 @@ def _render_productivity_evidence_sections(
         data=_build_productivity_summary_pdf(simulation, field_context),
         file_name="agrovision_recommendation_summary.pdf",
         mime="application/pdf",
-        use_container_width=True,
+        use_container_width=False,
     )
 
     st.markdown(
@@ -2961,14 +2369,14 @@ def _render_payoff_matrix_recommendation_sections(
 
     st.markdown(_findings_card_html(summary), unsafe_allow_html=True)
     st.subheader("Payoff Matrix")
-    st.dataframe(_payoff_matrix_dataframe(simulation.payoff_matrix), use_container_width=True)
+    st.dataframe(_payoff_matrix_dataframe(simulation.payoff_matrix), use_container_width=False)
 
     st.download_button(
         "Export Summary",
         data=_build_simulation_download_text(simulation, field_context),
         file_name="agrovision_payoff_matrix_summary.txt",
         mime="text/plain",
-        use_container_width=True,
+        use_container_width=False,
     )
 
 
@@ -3074,7 +2482,7 @@ def _render_compare_simulations_page() -> None:
         plot_bgcolor=SURFACE,
         font_color=TEXT,
     )
-    st.plotly_chart(fig, use_container_width=True, theme=None)
+    st.plotly_chart(fig, use_container_width=False, theme=None)
 
     action_col_a, action_col_b = st.columns([1, 1])
     with action_col_a:
@@ -3083,10 +2491,10 @@ def _render_compare_simulations_page() -> None:
             data=comparison_df.to_csv(index=False),
             file_name="agrovision_session_simulation_comparison.csv",
             mime="text/csv",
-            use_container_width=True,
+            use_container_width=False,
         )
     with action_col_b:
-        if st.button("Clear Saved Simulations", use_container_width=True):
+        if st.button("Clear Saved Simulations", use_container_width=False):
             st.session_state["saved_simulations"] = []
             st.rerun()
 
