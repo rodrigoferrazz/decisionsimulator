@@ -2913,7 +2913,7 @@ def _productivity_calculation_flow_html(
             "1",
             "Crop baseline",
             f"{base_productivity:.2f} bags/ha",
-            f"{seed_label} median productivity from Bayer historical records.",
+            f"{seed_label} Decision Tree starting point before adjustments.",
             "",
         ),
         (
@@ -2993,7 +2993,7 @@ def _productivity_factors_html(productivity_factors: dict[str, float]) -> str:
         <h3>Model factors</h3>
         <div class="ag-metric-grid ag-metric-grid--six">
             <div class="ag-metric-item">
-                <div class="ag-metric-label">Bayer median yield</div>
+                <div class="ag-metric-label">Decision Tree baseline</div>
                 <div class="ag-metric-value">{base_productivity:.2f} bags/ha</div>
             </div>
             <div class="ag-metric-item">
@@ -3081,10 +3081,10 @@ def _data_sources_html(simulation) -> str:
                     <div class="ag-source-title">Bayer history + inputs</div>
                     <div class="ag-source-badge">Agronomic</div>
                 </div>
-                <div class="ag-source-role">Provides crop baseline productivity, pH response, planting window effect, and historical context.</div>
+                    <div class="ag-source-role">Provides pH response, planting window effect, and historical context around the Decision Tree baseline.</div>
                 <div class="ag-source-metrics">
                     {_source_metric("Records", f"{productivity_factors.get("bayer_records", 0):,.0f}")}
-                    {_source_metric("Base", f"{_display_bags_per_hectare(float(productivity_factors.get("base_productivity", 0.0))):.2f} bags/ha")}
+                    {_source_metric("Tree base", f"{_display_bags_per_hectare(float(productivity_factors.get("base_productivity", 0.0))):.2f} bags/ha")}
                     {_source_metric("pH factor", f"{float(productivity_factors.get("soil_ph_factor", 1.0)):.2f}x")}
                     {_source_metric("Window", f"{float(productivity_factors.get("planting_window_factor", 1.0)):.2f}x")}
                 </div>
@@ -3903,7 +3903,7 @@ def _build_productivity_summary_pdf(
 
     section_title("Model factors")
     factor_items = (
-        ("Bayer median yield", f"{_display_bags_per_hectare(float(productivity_factors.get('base_productivity', 0.0))):.2f} bags/ha"),
+        ("Decision Tree baseline", f"{_display_bags_per_hectare(float(productivity_factors.get('base_productivity', 0.0))):.2f} bags/ha"),
         ("Climate factor", f"{float(productivity_factors.get('climate_factor', 1.0)):.2f}x"),
         ("Weather intensity", f"{float(productivity_factors.get('weather_intensity_factor', 1.0)):.2f}x"),
         ("Station adjustment", f"{float(productivity_factors.get('station_observation_factor', 1.0)):.3f}x"),

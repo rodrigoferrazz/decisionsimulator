@@ -55,8 +55,9 @@ def test_favorable_forecast_increases_favorable_scenario_probability() -> None:
     assert result.simulation_method == "Decision Tree"
     assert result.decision_summary is None
     soybean_model = get_crop_model_inputs("soybean")
+    assert result.productivity_factors["base_productivity"] == 60.0
     assert result.expected_productivity_bags_ha == round(
-        yield_to_bags_per_hectare(soybean_model.median_yield)
+        result.productivity_factors["base_productivity"]
         * result.productivity_factors["climate_factor"]
         * result.productivity_factors["soil_ph_factor"]
         * soybean_model.planting_window_factors["Ideal"],

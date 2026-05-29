@@ -13,7 +13,6 @@ from typing import Any
 
 from src.data.historical_indicators import (
     get_crop_model_inputs,
-    yield_to_bags_per_hectare,
 )
 from src.decision_engine import (
     DEFAULT_PAYOFF_MATRIX,
@@ -27,6 +26,7 @@ from src.decision_engine import (
 
 DECISION_TREE_METHOD = "Decision Tree"
 PAYOFF_MATRIX_METHOD = "Payoff Matrix"
+DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA = 60.0
 
 
 @dataclass(frozen=True)
@@ -324,7 +324,7 @@ def _productivity_result(
     crop_model = get_crop_model_inputs(seed_type)
     soil_ph = float(field_context.get("soil_ph", 6.2) or 6.2)
     planting_window = str(field_context.get("planting_window", "Ideal") or "Ideal")
-    base_productivity = yield_to_bags_per_hectare(crop_model.median_yield)
+    base_productivity = DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA
     climate_factor = round(
         crop_model.climate_factors.get(classification, 1.0)
         * weather_intensity_factor,
