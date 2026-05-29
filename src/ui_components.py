@@ -1878,12 +1878,12 @@ def _render_start_simulation_page() -> None:
             run_decision_tree = st.button(
                 "Simulate - Decision Tree",
                 type="primary",
-                use_container_width=False,
+                use_container_width=True,
             )
         with action_col_b:
             run_payoff_matrix = st.button(
                 "Simulate - Payoff Matrix",
-                use_container_width=False,
+                use_container_width=True,
             )
 
         if run_decision_tree or run_payoff_matrix:
