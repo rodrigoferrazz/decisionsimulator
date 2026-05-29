@@ -1478,6 +1478,152 @@ def _inject_styles() -> None:
             color: var(--ag-clay);
             font-weight: 800;
         }}
+        .ag-payoff-panel {{
+            background: var(--ag-surface);
+            border: 1px solid var(--ag-line);
+            border-radius: 14px;
+            padding: 1.1rem;
+            margin: 1rem 0 1.3rem;
+            box-shadow: 0 8px 22px -20px rgba(31, 63, 45, 0.28);
+        }}
+        .ag-payoff-head {{
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) repeat(3, minmax(145px, 0.34fr));
+            gap: 0.75rem;
+            align-items: stretch;
+            margin-bottom: 1rem;
+        }}
+        .ag-payoff-title {{
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.25rem;
+        }}
+        .ag-payoff-title h3 {{
+            margin: 0;
+            color: var(--ag-ink);
+            font-size: 1.35rem;
+        }}
+        .ag-payoff-title p {{
+            margin: 0;
+            color: var(--ag-muted);
+            font-size: 0.86rem;
+            line-height: 1.45;
+        }}
+        .ag-payoff-stat {{
+            border: 1px solid #d8e5d4;
+            background: #fbfcf8;
+            border-radius: 10px;
+            padding: 0.75rem 0.8rem;
+        }}
+        .ag-payoff-stat span {{
+            display: block;
+            color: var(--ag-muted);
+            font-size: 0.64rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            font-weight: 800;
+            margin-bottom: 0.28rem;
+        }}
+        .ag-payoff-stat strong {{
+            color: var(--ag-leaf-dark);
+            font-size: 0.98rem;
+        }}
+        .ag-payoff-table {{
+            display: grid;
+            grid-template-columns: minmax(230px, 1.15fr) repeat(3, minmax(140px, 1fr)) minmax(145px, 0.75fr);
+            border: 1px solid var(--ag-line);
+            border-radius: 12px;
+            overflow: hidden;
+            background: #fffffb;
+        }}
+        .ag-payoff-cell {{
+            min-height: 64px;
+            padding: 0.78rem 0.9rem;
+            border-right: 1px solid var(--ag-line);
+            border-bottom: 1px solid var(--ag-line);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.18rem;
+            color: var(--ag-ink);
+        }}
+        .ag-payoff-cell:nth-child(5n) {{
+            border-right: 0;
+        }}
+        .ag-payoff-table .ag-payoff-cell:nth-last-child(-n+5) {{
+            border-bottom: 0;
+        }}
+        .ag-payoff-header {{
+            background: #f2f6ee;
+            color: var(--ag-muted);
+            min-height: 74px;
+        }}
+        .ag-payoff-header strong,
+        .ag-payoff-row-label strong {{
+            color: var(--ag-ink);
+            font-size: 0.9rem;
+        }}
+        .ag-payoff-header span,
+        .ag-payoff-row-label span,
+        .ag-payoff-cell small {{
+            color: var(--ag-muted);
+            font-size: 0.7rem;
+            line-height: 1.35;
+        }}
+        .ag-payoff-row-label {{
+            background: #fffefa;
+        }}
+        .ag-payoff-alt-line {{
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+        }}
+        .ag-payoff-alt-id {{
+            display: inline-grid;
+            place-items: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 8px;
+            background: var(--ag-leaf-soft);
+            border: 1px solid #cfe3ca;
+            color: var(--ag-leaf-dark);
+            font-family: var(--ag-mono);
+            font-weight: 800;
+            font-size: 0.75rem;
+        }}
+        .ag-payoff-value {{
+            align-items: flex-end;
+            text-align: right;
+            font-family: var(--ag-mono);
+            font-size: 1.05rem;
+            font-weight: 800;
+        }}
+        .ag-payoff-value small {{
+            font-family: var(--ag-ui);
+            font-weight: 700;
+        }}
+        .ag-payoff-cell--focus {{
+            background: #f7faf3;
+        }}
+        .ag-payoff-cell--best {{
+            background: #eaf4e6;
+            color: var(--ag-leaf-dark);
+        }}
+        .ag-payoff-row--recommended {{
+            background: #f1f8ed;
+        }}
+        .ag-payoff-row--recommended.ag-payoff-cell--best {{
+            background: #dfeedd;
+        }}
+        .ag-payoff-row--recommended.ag-payoff-row-label .ag-payoff-alt-id {{
+            background: var(--ag-leaf);
+            color: #f3f8ef;
+        }}
+        .ag-payoff-ev {{
+            background: #f7faf3;
+            color: var(--ag-leaf-dark);
+        }}
         .ag-criterion-note {{
             margin-top: 0.75rem;
             padding: 0.75rem 0.85rem;
@@ -2271,8 +2417,10 @@ def _render_compare_strategies_page() -> None:
         )
         st.plotly_chart(fig, use_container_width=False, theme=None)
 
-    st.subheader("Payoff Matrix")
-    st.dataframe(_payoff_matrix_dataframe(payoff_matrix), use_container_width=False)
+    st.markdown(
+        _payoff_matrix_table_html(payoff_matrix, summary, probabilities),
+        unsafe_allow_html=True,
+    )
 
     st.subheader("Risk and Confidence Indicators")
     for alternative in payoff_matrix:
@@ -2457,7 +2605,11 @@ def _render_payoff_matrix_recommendation_sections(
 
     if include_consensus:
         st.markdown(
-            _recommendation_consensus_html(summary, simulation.payoff_matrix),
+            _recommendation_consensus_html(
+                summary,
+                simulation.payoff_matrix,
+                simulation.probabilities,
+            ),
             unsafe_allow_html=True,
         )
     if include_weather_evidence:
@@ -2491,8 +2643,14 @@ def _render_payoff_matrix_recommendation_sections(
         )
 
     st.markdown(_findings_card_html(summary), unsafe_allow_html=True)
-    st.subheader("Payoff Matrix")
-    st.dataframe(_payoff_matrix_dataframe(simulation.payoff_matrix), use_container_width=True)
+    st.markdown(
+        _payoff_matrix_table_html(
+            simulation.payoff_matrix,
+            summary,
+            simulation.probabilities,
+        ),
+        unsafe_allow_html=True,
+    )
 
     st.download_button(
         "Export Summary",
@@ -2831,18 +2989,50 @@ def _productivity_summary_html(simulation, field_context: dict[str, object]) -> 
         display_productivity=expected_productivity,
     )
     simulation_method = getattr(simulation, "simulation_method", DECISION_TREE_METHOD)
-    eyebrow = (
-        "Decision Tree expected value from spreadsheet branches"
-        if simulation_method == DECISION_TREE_METHOD
-        else f"Open-Meteo climate class: {simulation.climatic_condition}"
-    )
-    return f"""
-    <div class="ag-consensus">
-        <div class="ag-consensus-left">
-            <div class="ag-consensus-eyebrow">{escape(eyebrow)}</div>
-            <div class="ag-consensus-title">{escape(seed_label)} forecast: <em>{expected_productivity:.2f} bags/ha</em></div>
-            <p class="ag-consensus-sub">{escape(recommendation_summary)}</p>
-            <div class="ag-consensus-meta">
+
+    if simulation_method == PAYOFF_MATRIX_METHOD:
+        summary = simulation.decision_summary or build_decision_summary(
+            simulation.payoff_matrix,
+            simulation.probabilities,
+        )
+        focus_scenario = _dominant_scenario(simulation.probabilities)
+        focus_strategy = _best_strategy_for_scenario(
+            simulation.payoff_matrix,
+            focus_scenario,
+        )
+        final = summary.final_recommendation
+        final_id, final_name = _alternative_parts(final)
+        eyebrow = f"Payoff Matrix scenario: {_scenario_label(focus_scenario)}"
+        title_html = (
+            f"Recommended strategy: <em>{escape(final_name)}</em>"
+        )
+        meta_html = dedent(f"""
+                <div>
+                    <div class="ag-consensus-meta-label">Forecast scenario</div>
+                    <div class="ag-consensus-meta-value">{escape(_scenario_label(focus_scenario))}</div>
+                </div>
+                <div>
+                    <div class="ag-consensus-meta-label">Best in scenario</div>
+                    <div class="ag-consensus-meta-value">{escape(_strategy_label(focus_strategy))}</div>
+                </div>
+                <div>
+                    <div class="ag-consensus-meta-label">Final recommendation</div>
+                    <div class="ag-consensus-meta-value">{escape(_strategy_label(final))}</div>
+                </div>
+                <div>
+                    <div class="ag-consensus-meta-label">Expected value</div>
+                    <div class="ag-consensus-meta-value">{summary.expected_value.scores[final]:.2f} bags/ha</div>
+                </div>
+        """).strip()
+        crest = escape(final_id)
+        chip = "Strategy pick"
+    else:
+        eyebrow = "Decision Tree expected value from spreadsheet branches"
+        title_html = (
+            f"{escape(seed_label)} forecast: "
+            f"<em>{expected_productivity:.2f} bags/ha</em>"
+        )
+        meta_html = dedent(f"""
                 <div>
                     <div class="ag-consensus-meta-label">Seed type</div>
                     <div class="ag-consensus-meta-value">{escape(seed_label)}</div>
@@ -2859,14 +3049,26 @@ def _productivity_summary_html(simulation, field_context: dict[str, object]) -> 
                     <div class="ag-consensus-meta-label">Expected productivity</div>
                     <div class="ag-consensus-meta-value">{expected_productivity:.2f} bags/ha</div>
                 </div>
+        """).strip()
+        crest = "✓"
+        chip = "Productivity estimate"
+
+    return dedent(f"""
+    <div class="ag-consensus">
+        <div class="ag-consensus-left">
+            <div class="ag-consensus-eyebrow">{escape(eyebrow)}</div>
+            <div class="ag-consensus-title">{title_html}</div>
+            <p class="ag-consensus-sub">{escape(recommendation_summary)}</p>
+            <div class="ag-consensus-meta">
+{meta_html}
             </div>
         </div>
         <div class="ag-consensus-right">
-            <div class="ag-consensus-crest">✓</div>
-            <div class="ag-consensus-chip">Productivity estimate</div>
+            <div class="ag-consensus-crest">{crest}</div>
+            <div class="ag-consensus-chip">{escape(chip)}</div>
         </div>
     </div>
-    """
+    """).strip()
 
 
 def _productivity_calculation_flow_html(
@@ -3155,13 +3357,17 @@ def _seed_type_label(seed_type: str) -> str:
     return "Corn" if seed_type == "corn" else "Soybean"
 
 
-def _recommendation_consensus_html(summary, payoff_matrix: PayoffMatrix) -> str:
+def _recommendation_consensus_html(
+    summary,
+    payoff_matrix: PayoffMatrix,
+    probabilities: ScenarioProbabilities,
+) -> str:
     """Return the redesigned consensus hero for the recommendation page."""
     final = summary.final_recommendation
     consensus = summary.expected_value.recommendation == summary.minimax.recommendation
     scores = summary.expected_value.scores
-    regret_scores = summary.minimax.scores
-    values = list(payoff_matrix[final].values())
+    focus_scenario = _dominant_scenario(probabilities)
+    focus_strategy = _best_strategy_for_scenario(payoff_matrix, focus_scenario)
     status = "Both criteria agree" if consensus else "EV primary - Minimax comparison"
     explanation = (
         f"Expected Value and Minimax both select {_strategy_label(final)}. "
@@ -3183,29 +3389,165 @@ def _recommendation_consensus_html(summary, payoff_matrix: PayoffMatrix) -> str:
             <p class="ag-consensus-sub">{escape(explanation)}</p>
             <div class="ag-consensus-meta">
                 <div>
-                    <div class="ag-consensus-meta-label">Seed density strategy</div>
-                    <div class="ag-consensus-meta-value">{escape(_strategy_description(final))}</div>
+                    <div class="ag-consensus-meta-label">Forecast scenario</div>
+                    <div class="ag-consensus-meta-value">{escape(_scenario_label(focus_scenario))}</div>
                 </div>
                 <div>
-                    <div class="ag-consensus-meta-label">Expected yield</div>
+                    <div class="ag-consensus-meta-label">Best in scenario</div>
+                    <div class="ag-consensus-meta-value">{escape(_strategy_label(focus_strategy))}</div>
+                </div>
+                <div>
+                    <div class="ag-consensus-meta-label">Final recommendation</div>
+                    <div class="ag-consensus-meta-value">{escape(_strategy_label(final))}</div>
+                </div>
+                <div>
+                    <div class="ag-consensus-meta-label">Expected value</div>
                     <div class="ag-consensus-meta-value">{scores[final]:.2f} bags/ha</div>
-                </div>
-                <div>
-                    <div class="ag-consensus-meta-label">Max regret</div>
-                    <div class="ag-consensus-meta-value">{regret_scores[final]:.2f} bags/ha</div>
-                </div>
-                <div>
-                    <div class="ag-consensus-meta-label">Range</div>
-                    <div class="ag-consensus-meta-value">{min(values):.0f} - {max(values):.0f}</div>
                 </div>
             </div>
         </div>
         <div class="ag-consensus-right">
             <div class="ag-consensus-crest">✓</div>
-            <div class="ag-consensus-chip">{'Consensus pick' if consensus else 'EV primary pick'}</div>
+            <div class="ag-consensus-chip">{escape(_strategy_label(final))} pick</div>
         </div>
     </div>
     """
+
+
+def _payoff_matrix_table_html(
+    payoff_matrix: PayoffMatrix,
+    summary,
+    probabilities: ScenarioProbabilities,
+) -> str:
+    """Return a branded payoff matrix with scenario and recommendation context."""
+    scenarios = list(next(iter(payoff_matrix.values())).keys())
+    focus_scenario = _dominant_scenario(probabilities)
+    scenario_winners = {
+        scenario: _best_strategy_for_scenario(payoff_matrix, scenario)
+        for scenario in scenarios
+    }
+    focus_strategy = scenario_winners[focus_scenario]
+    final = summary.final_recommendation
+
+    header_cells = [
+        dedent("""
+        <div class="ag-payoff-cell ag-payoff-header">
+            <strong>Alternative</strong>
+            <span>Seed density strategy</span>
+        </div>
+        """).strip()
+    ]
+    for scenario in scenarios:
+        focus_class = " ag-payoff-cell--focus" if scenario == focus_scenario else ""
+        header_cells.append(
+            dedent(f"""
+            <div class="ag-payoff-cell ag-payoff-header{focus_class}">
+                <strong>{escape(_scenario_label(scenario))}</strong>
+                <span>p={probabilities[scenario] * 100:.0f}% · best: {escape(_strategy_label(scenario_winners[scenario]))}</span>
+            </div>
+            """).strip()
+        )
+    header_cells.append(
+        dedent("""
+        <div class="ag-payoff-cell ag-payoff-header ag-payoff-ev">
+            <strong>Expected Value</strong>
+            <span>weighted score</span>
+        </div>
+        """).strip()
+    )
+
+    row_cells = []
+    for alternative, scenario_payoffs in payoff_matrix.items():
+        row_class = (
+            " ag-payoff-row--recommended"
+            if alternative == final
+            else ""
+        )
+        alt_id, alt_name = _alternative_parts(alternative)
+        row_cells.append(
+            dedent(f"""
+            <div class="ag-payoff-cell ag-payoff-row-label{row_class}">
+                <div class="ag-payoff-alt-line">
+                    <span class="ag-payoff-alt-id">{escape(alt_id)}</span>
+                    <strong>{escape(alt_name)}</strong>
+                </div>
+                <span>{escape(_strategy_description(alternative))}</span>
+            </div>
+            """).strip()
+        )
+        for scenario, payoff in scenario_payoffs.items():
+            value_classes = ["ag-payoff-cell", "ag-payoff-value"]
+            if scenario == focus_scenario:
+                value_classes.append("ag-payoff-cell--focus")
+            if alternative == scenario_winners[scenario]:
+                value_classes.append("ag-payoff-cell--best")
+            if row_class:
+                value_classes.append(row_class.strip())
+            cell_note = (
+                "best for scenario"
+                if alternative == scenario_winners[scenario]
+                else "scenario payoff"
+            )
+            row_cells.append(
+                dedent(f"""
+                <div class="{' '.join(value_classes)}">
+                    {payoff:.0f}
+                    <small>{escape(cell_note)}</small>
+                </div>
+                """).strip()
+            )
+        row_cells.append(
+            dedent(f"""
+            <div class="ag-payoff-cell ag-payoff-value ag-payoff-ev{row_class}">
+                {summary.expected_value.scores[alternative]:.2f}
+                <small>{'recommended' if alternative == final else 'EV score'}</small>
+            </div>
+            """).strip()
+        )
+
+    return dedent(f"""
+    <div class="ag-payoff-panel">
+        <div class="ag-payoff-head">
+            <div class="ag-payoff-title">
+                <div class="ag-kicker">Payoff Matrix</div>
+                <h3>Scenario payoffs and selected strategy</h3>
+                <p>
+                    The table highlights the best strategy inside each climate
+                    scenario and the final Expected Value recommendation.
+                </p>
+            </div>
+            <div class="ag-payoff-stat">
+                <span>Forecast scenario</span>
+                <strong>{escape(_scenario_label(focus_scenario))}</strong>
+            </div>
+            <div class="ag-payoff-stat">
+                <span>Best in scenario</span>
+                <strong>{escape(_strategy_label(focus_strategy))}</strong>
+            </div>
+            <div class="ag-payoff-stat">
+                <span>Final recommendation</span>
+                <strong>{escape(_strategy_label(final))}</strong>
+            </div>
+        </div>
+        <div class="ag-payoff-table">
+            {''.join(header_cells)}
+            {''.join(row_cells)}
+        </div>
+    </div>
+    """).strip()
+
+
+def _dominant_scenario(probabilities: ScenarioProbabilities) -> str:
+    """Return the scenario with the highest forecast-derived probability."""
+    return max(probabilities, key=lambda scenario: probabilities[scenario])
+
+
+def _best_strategy_for_scenario(
+    payoff_matrix: PayoffMatrix,
+    scenario: str,
+) -> str:
+    """Return the highest-payoff strategy for a specific scenario."""
+    return max(payoff_matrix, key=lambda alternative: payoff_matrix[alternative][scenario])
 
 
 def _weather_evidence_html(
