@@ -57,6 +57,12 @@ PAGE_NAMES = {
 }
 
 SEED_TYPE_OPTIONS = ("soybean", "corn")
+SEED_POTENTIAL_OPTIONS = (
+    "Auto (probabilistic)",
+    "High Potential",
+    "Intermediate",
+    "Limited Potential",
+)
 PLANTING_WINDOW_OPTIONS = ("Early", "Ideal", "Late")
 
 
@@ -2258,10 +2264,22 @@ def _render_context_inputs() -> dict[str, object]:
             SEED_TYPE_OPTIONS,
             index=_option_index(list(SEED_TYPE_OPTIONS), defaults.get("seed_type", "soybean")),
         )
+        seed_potential = st.selectbox(
+            "4\\. Seed Potential",
+            SEED_POTENTIAL_OPTIONS,
+            index=_option_index(
+                list(SEED_POTENTIAL_OPTIONS),
+                defaults.get("seed_potential", "Auto (probabilistic)"),
+            ),
+            help=(
+                "Use Auto to sample the seed-potential branch using the "
+                "spreadsheet probabilities."
+            ),
+        )
 
     with col_b:
         soil_ph = _validated_numeric_text_input(
-            "4\\. Soil pH",
+            "5\\. Soil pH",
             key="soil_ph_input",
             default_value=float(defaults.get("soil_ph", 6.2)),
             minimum=3.5,
@@ -2272,7 +2290,7 @@ def _render_context_inputs() -> dict[str, object]:
             errors=input_errors,
         )
         planting_window = st.selectbox(
-            "5\\. Planting Window",
+            "6\\. Planting Window",
             PLANTING_WINDOW_OPTIONS,
             index=_option_index(
                 list(PLANTING_WINDOW_OPTIONS),
@@ -2280,7 +2298,7 @@ def _render_context_inputs() -> dict[str, object]:
             ),
         )
         st.text_input(
-            "6\\. Climatic Conditions",
+            "7\\. Climatic Conditions",
             value="Open-Meteo API + Internal Station Database",
             disabled=True,
         )
@@ -2294,6 +2312,7 @@ def _render_context_inputs() -> dict[str, object]:
         "farm_latitude": farm_latitude,
         "farm_longitude": farm_longitude,
         "seed_type": seed_type,
+        "seed_potential": seed_potential,
         "soil_ph": soil_ph,
         "planting_window": planting_window,
         "_input_errors": input_errors,

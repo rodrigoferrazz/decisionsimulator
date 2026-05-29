@@ -25,6 +25,7 @@ def test_favorable_forecast_increases_favorable_scenario_probability() -> None:
             "farm_latitude": -16.6869,
             "farm_longitude": -49.2648,
             "seed_type": "soybean",
+            "seed_potential": "Intermediate",
             "soil_ph": 5.5,
             "planting_window": "Ideal",
         },
@@ -68,6 +69,7 @@ def test_same_classification_forecasts_keep_spreadsheet_tree_expected_value() ->
         "farm_latitude": -13.5277,
         "farm_longitude": -56.0469,
         "seed_type": "soybean",
+        "seed_potential": "Intermediate",
         "soil_ph": 6.2,
         "planting_window": "Ideal",
     }
@@ -121,6 +123,7 @@ def test_decision_tree_path_changes_with_farm_inputs_and_climate() -> None:
             "farm_latitude": -13.5277,
             "farm_longitude": -56.0469,
             "seed_type": "soybean",
+            "seed_potential": "Intermediate",
             "soil_ph": 6.2,
             "planting_window": "Ideal",
         },
@@ -141,6 +144,7 @@ def test_decision_tree_path_changes_with_farm_inputs_and_climate() -> None:
             "farm_latitude": -13.5277,
             "farm_longitude": -56.0469,
             "seed_type": "soybean",
+            "seed_potential": "Intermediate",
             "soil_ph": 4.4,
             "planting_window": "Late",
         },
@@ -165,11 +169,48 @@ def test_decision_tree_path_changes_with_farm_inputs_and_climate() -> None:
     )
 
 
+def test_auto_seed_potential_samples_spreadsheet_probabilities() -> None:
+    forecast = {
+        "daily": {
+            "time": ["2026-05-26", "2026-05-27", "2026-05-28"],
+            "temperature_2m_max": [27.0, 27.0, 27.0],
+            "temperature_2m_min": [18.0, 18.0, 18.0],
+            "precipitation_sum": [3.0, 3.0, 2.0],
+            "precipitation_probability_max": [35, 40, 35],
+            "weather_code": [2, 2, 2],
+            "et0_fao_evapotranspiration": [3.4, 3.6, 3.5],
+        }
+    }
+    base_context = {
+        "farm_latitude": -13.5277,
+        "farm_longitude": -56.0469,
+        "seed_type": "soybean",
+        "soil_ph": 6.2,
+        "planting_window": "Ideal",
+    }
+
+    limited_seed_run = build_weather_driven_simulation(
+        field_context={**base_context, "decision_tree_random_seed": 4},
+        forecast=forecast,
+    )
+    high_seed_run = build_weather_driven_simulation(
+        field_context={**base_context, "decision_tree_random_seed": 5},
+        forecast=forecast,
+    )
+
+    assert limited_seed_run.expected_productivity_bags_ha == 64.0
+    assert high_seed_run.expected_productivity_bags_ha == 70.0
+    assert "Sampled from spreadsheet" in (
+        limited_seed_run.productivity_factors["decision_tree_path"][-1]["source"]
+    )
+
+
 def test_station_observations_adjust_productivity_and_evidence() -> None:
     field_context = {
         "farm_latitude": -13.5277,
         "farm_longitude": -56.0469,
         "seed_type": "soybean",
+        "seed_potential": "Intermediate",
         "soil_ph": 6.2,
         "planting_window": "Ideal",
     }
@@ -225,6 +266,7 @@ def test_hot_dry_forecast_increases_unfavorable_probability_and_intensive_downsi
             "farm_latitude": -13.5277,
             "farm_longitude": -56.0469,
             "seed_type": "corn",
+            "seed_potential": "Intermediate",
             "soil_ph": 4.4,
             "planting_window": "Late",
         },
@@ -278,6 +320,7 @@ def test_explicit_decision_tree_builder_matches_backward_compatible_builder() ->
         "farm_latitude": -16.6869,
         "farm_longitude": -49.2648,
         "seed_type": "soybean",
+        "seed_potential": "Intermediate",
         "soil_ph": 6.0,
         "planting_window": "Ideal",
     }
@@ -310,6 +353,7 @@ def test_payoff_matrix_simulation_uses_decision_summary_engine() -> None:
             "farm_latitude": -13.5277,
             "farm_longitude": -56.0469,
             "seed_type": "corn",
+            "seed_potential": "Intermediate",
             "soil_ph": 6.2,
             "planting_window": "Ideal",
         },
@@ -341,6 +385,7 @@ if __name__ == "__main__":
     test_favorable_forecast_increases_favorable_scenario_probability()
     test_same_classification_forecasts_keep_spreadsheet_tree_expected_value()
     test_decision_tree_path_changes_with_farm_inputs_and_climate()
+    test_auto_seed_potential_samples_spreadsheet_probabilities()
     test_station_observations_adjust_productivity_and_evidence()
     test_hot_dry_forecast_increases_unfavorable_probability_and_intensive_downside()
     test_incomplete_forecast_uses_explicit_baseline_fallback()

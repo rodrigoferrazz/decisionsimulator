@@ -7,6 +7,7 @@ productivity payoff matrix.
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from statistics import mean
 from typing import Any
@@ -429,7 +430,7 @@ def _decision_tree_selected_path(
     planting_branch = _decision_tree_planting_branch(planting_window)
     climate_branch = _decision_tree_climate_branch(classification)
     soil_branch = _decision_tree_soil_branch(soil_ph)
-    seed_branch = _decision_tree_seed_branch(field_context.get("seed_potential"))
+    seed_branch, seed_source = _decision_tree_seed_branch(field_context)
 
     return (
         _decision_tree_step(
@@ -454,7 +455,7 @@ def _decision_tree_selected_path(
             "seed_potential",
             "Type of seed",
             seed_branch,
-            "Default seed potential when no seed-potential input is provided.",
+            seed_source,
         ),
     )
 
@@ -499,13 +500,32 @@ def _decision_tree_soil_branch(soil_ph: float) -> str:
     return "Critical"
 
 
-def _decision_tree_seed_branch(seed_potential: object) -> str:
+def _decision_tree_seed_branch(field_context: dict[str, object]) -> tuple[str, str]:
+    seed_potential = field_context.get("seed_potential")
     normalized = str(seed_potential or "").strip().lower()
     if normalized in {"high", "high potential", "alto potencial"}:
-        return "High Potential"
+        return "High Potential", "Input seed potential: High Potential"
+    if normalized in {"intermediate", "medium", "intermediário", "intermediario"}:
+        return "Intermediate", "Input seed potential: Intermediate"
     if normalized in {"limited", "limited potential", "baixo potencial"}:
-        return "Limited Potential"
-    return "Intermediate"
+        return "Limited Potential", "Input seed potential: Limited Potential"
+
+    sampled_branch = _sample_decision_tree_branch(
+        "seed_potential",
+        field_context.get("decision_tree_random_seed"),
+    )
+    return sampled_branch, "Sampled from spreadsheet seed-potential probabilities."
+
+
+def _sample_decision_tree_branch(branch_name: str, seed: object | None = None) -> str:
+    rng = random.Random(f"{seed}:{branch_name}") if seed is not None else random
+    draw = rng.random()
+    cumulative_probability = 0.0
+    for label, _, probability in DECISION_TREE_BRANCHES[branch_name]:
+        cumulative_probability += probability
+        if draw <= cumulative_probability:
+            return label
+    return DECISION_TREE_BRANCHES[branch_name][-1][0]
 
 
 def _normalize_seed_type(seed_type: object) -> str:
