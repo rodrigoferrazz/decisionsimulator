@@ -1488,6 +1488,127 @@ def _inject_styles() -> None:
             font-size: 0.78rem;
             line-height: 1.5;
         }}
+        .ag-flow-card {{
+            background: var(--ag-surface);
+            border: 1px solid var(--ag-line);
+            border-radius: 14px;
+            padding: 1.35rem 1.45rem;
+            margin-top: 1.2rem;
+            box-shadow: 0 1px 2px rgba(31, 63, 45, 0.04);
+        }}
+        .ag-flow-card h3 {{
+            font-family: var(--ag-serif);
+            font-size: 1.8rem !important;
+            font-weight: 400 !important;
+            margin: 0.3rem 0 0.35rem;
+            color: var(--ag-ink);
+        }}
+        .ag-flow-sub {{
+            color: var(--ag-muted);
+            font-size: 0.9rem;
+            line-height: 1.55;
+            margin: 0 0 1rem;
+            max-width: 76ch;
+        }}
+        .ag-flow-equation {{
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: var(--ag-leaf-dark);
+            background: var(--ag-leaf-soft);
+            border: 1px solid #cfe3ca;
+            border-radius: 999px;
+            padding: 0.45rem 0.75rem;
+            font-family: var(--ag-mono);
+            font-size: 0.76rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }}
+        .ag-flow-track {{
+            display: grid;
+            grid-template-columns: repeat(6, minmax(130px, 1fr));
+            gap: 0.7rem;
+            align-items: stretch;
+        }}
+        .ag-flow-step {{
+            position: relative;
+            border: 1px solid var(--ag-line);
+            background: #fbfaf5;
+            border-radius: 12px;
+            padding: 0.85rem;
+            min-height: 148px;
+        }}
+        .ag-flow-step:not(:last-child)::after {{
+            content: "→";
+            position: absolute;
+            right: -0.55rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 1.1rem;
+            height: 1.1rem;
+            border-radius: 999px;
+            display: grid;
+            place-items: center;
+            background: var(--ag-surface);
+            border: 1px solid var(--ag-line);
+            color: var(--ag-leaf);
+            font-family: var(--ag-mono);
+            font-size: 0.72rem;
+            font-weight: 800;
+            z-index: 2;
+        }}
+        .ag-flow-index {{
+            width: 1.45rem;
+            height: 1.45rem;
+            border-radius: 999px;
+            display: grid;
+            place-items: center;
+            background: var(--ag-leaf-soft);
+            border: 1px solid #cfe3ca;
+            color: var(--ag-leaf-dark);
+            font-family: var(--ag-mono);
+            font-size: 0.72rem;
+            font-weight: 800;
+            margin-bottom: 0.65rem;
+        }}
+        .ag-flow-label {{
+            color: var(--ag-muted);
+            font-size: 0.63rem;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            font-weight: 800;
+            margin-bottom: 0.28rem;
+        }}
+        .ag-flow-value {{
+            color: var(--ag-ink);
+            font-size: 1rem;
+            line-height: 1.25;
+            font-weight: 760;
+        }}
+        .ag-flow-note {{
+            color: var(--ag-muted);
+            font-size: 0.74rem;
+            line-height: 1.45;
+            margin-top: 0.55rem;
+        }}
+        .ag-flow-step--final {{
+            background: var(--ag-leaf-soft);
+            border-color: #cfe3ca;
+        }}
+        .ag-flow-step--final .ag-flow-value {{
+            color: var(--ag-leaf-dark);
+            font-family: var(--ag-mono);
+            font-size: 1.1rem;
+        }}
+        .ag-flow-formula {{
+            margin-top: 0.9rem;
+            padding-top: 0.85rem;
+            border-top: 1px dashed #bfd9bb;
+            color: var(--ag-muted);
+            font-family: var(--ag-mono);
+            font-size: 0.78rem;
+            line-height: 1.55;
+        }}
         .ag-savebar {{
             background: var(--ag-surface);
             border: 1px solid var(--ag-line);
@@ -2267,7 +2388,7 @@ def _render_productivity_recommendation_page(simulation) -> None:
         unsafe_allow_html=True,
     )
 
-    if simulation_method == PAYOFF_MATRIX_METHOD:
+    if simulation_method == DECISION_TREE_METHOD:
         _render_productivity_evidence_sections(simulation, field_context)
         return
 
@@ -2297,15 +2418,7 @@ def _render_productivity_evidence_sections(
 ) -> None:
     """Render the supporting data source panels for a productivity estimate."""
     st.markdown(
-        _data_sources_html(simulation),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        _weather_evidence_html(simulation.weather_evidence, field_context),
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        _productivity_factors_html(simulation.productivity_factors),
+        _productivity_calculation_flow_html(simulation, field_context),
         unsafe_allow_html=True,
     )
 
@@ -2320,10 +2433,9 @@ def _render_productivity_evidence_sections(
     st.markdown(
         """
         <div class="ag-source-note">
-            Climatic conditions come from the Open-Meteo forecast for the selected
-            farm coordinates. The local station database adds recent observed
-            weather as a calibration layer when available. Productivity is also
-            adjusted by crop baseline, soil pH, and planting window.
+            This flow explains the Decision Tree productivity estimate shown in
+            the green card above. Payoff Matrix criteria are only shown when the
+            Payoff Matrix simulation is selected.
         </div>
         """,
         unsafe_allow_html=True,
@@ -2749,6 +2861,125 @@ def _productivity_summary_html(simulation, field_context: dict[str, object]) -> 
         </div>
     </div>
     """
+
+
+def _productivity_calculation_flow_html(
+    simulation,
+    field_context: dict[str, object],
+) -> str:
+    """Return a linear explanation of the Decision Tree productivity estimate."""
+    productivity_factors = dict(simulation.productivity_factors)
+    weather_evidence = dict(simulation.weather_evidence)
+    station = dict(weather_evidence.get("station_observation", {}))
+
+    seed_label = _seed_type_label(str(field_context.get("seed_type", "soybean")))
+    soil_ph = float(field_context.get("soil_ph", 0.0) or 0.0)
+    planting_window = str(field_context.get("planting_window", "Ideal") or "Ideal")
+    base_productivity = _display_bags_per_hectare(
+        float(productivity_factors.get("base_productivity", 0.0))
+    )
+    open_meteo_factor = float(
+        productivity_factors.get(
+            "open_meteo_climate_factor",
+            productivity_factors.get("climate_factor", 1.0),
+        )
+    )
+    station_factor = float(productivity_factors.get("station_observation_factor", 1.0))
+    soil_factor = float(productivity_factors.get("soil_ph_factor", 1.0))
+    window_factor = float(productivity_factors.get("planting_window_factor", 1.0))
+    expected_productivity = _display_bags_per_hectare(
+        float(simulation.expected_productivity_bags_ha)
+    )
+    climate_class = str(weather_evidence.get("classification", simulation.climatic_condition))
+    forecast_days = weather_evidence.get("forecast_days", "n/a")
+    station_note = (
+        "Local station data calibrated the forecast."
+        if station.get("available")
+        else "No station calibration was applied."
+    )
+    soil_note = (
+        f"Soil pH {soil_ph:.1f} is within the preferred range."
+        if soil_factor >= 1
+        else f"Soil pH {soil_ph:.1f} reduces the estimate."
+    )
+    formula = (
+        f"{base_productivity:.2f} x {open_meteo_factor:.4f} x "
+        f"{station_factor:.4f} x {soil_factor:.4f} x {window_factor:.4f} "
+        f"= {expected_productivity:.2f} bags/ha"
+    )
+
+    steps = (
+        (
+            "1",
+            "Crop baseline",
+            f"{base_productivity:.2f} bags/ha",
+            f"{seed_label} median productivity from Bayer historical records.",
+            "",
+        ),
+        (
+            "2",
+            "Open-Meteo climate",
+            f"{open_meteo_factor:.4f}x",
+            f"{climate_class} class from {forecast_days} forecast days.",
+            "",
+        ),
+        (
+            "3",
+            "Station calibration",
+            f"{station_factor:.4f}x",
+            station_note,
+            "",
+        ),
+        (
+            "4",
+            "Soil pH fit",
+            f"{soil_factor:.4f}x",
+            soil_note,
+            "",
+        ),
+        (
+            "5",
+            "Planting window",
+            f"{window_factor:.4f}x",
+            f"{planting_window} planting window adjustment.",
+            "",
+        ),
+        (
+            "6",
+            "Final forecast",
+            f"{expected_productivity:.2f} bags/ha",
+            "This is the number shown in the green recommendation card.",
+            " ag-flow-step--final",
+        ),
+    )
+    steps_html = "".join(
+        f'<div class="ag-flow-step{extra_class}">'
+        f'<div class="ag-flow-index">{escape(index)}</div>'
+        f'<div class="ag-flow-label">{escape(label)}</div>'
+        f'<div class="ag-flow-value">{escape(value)}</div>'
+        f'<div class="ag-flow-note">{escape(note)}</div>'
+        f'</div>'
+        for index, label, value, note, extra_class in steps
+    )
+
+    return dedent(f"""
+    <div class="ag-flow-card">
+        <div class="ag-kicker">Calculation flow</div>
+        <h3>How we reached {expected_productivity:.2f} bags/ha</h3>
+        <p class="ag-flow-sub">
+            The Decision Tree result is a productivity estimate, not a strategy
+            payoff table. It starts from the crop baseline and applies each
+            agronomic and climate adjustment once.
+        </p>
+        <div class="ag-flow-equation">
+            Baseline x Open-Meteo x Station x Soil pH x Planting window = Forecast
+        </div>
+        <div class="ag-flow-track">
+            {steps_html}
+        </div>
+        <div class="ag-flow-formula">{escape(formula)}</div>
+    </div>
+    """).strip()
 
 
 def _productivity_factors_html(productivity_factors: dict[str, float]) -> str:
