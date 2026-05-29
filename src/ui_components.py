@@ -2492,7 +2492,7 @@ def _render_payoff_matrix_recommendation_sections(
 
     st.markdown(_findings_card_html(summary), unsafe_allow_html=True)
     st.subheader("Payoff Matrix")
-    st.dataframe(_payoff_matrix_dataframe(simulation.payoff_matrix), use_container_width=False)
+    st.dataframe(_payoff_matrix_dataframe(simulation.payoff_matrix), use_container_width=True)
 
     st.download_button(
         "Export Summary",
@@ -3266,7 +3266,7 @@ def _criterion_card_html(
     payoff_matrix: PayoffMatrix,
     probabilities: ScenarioProbabilities,
 ) -> str:
-    """Return a criterion card with supporting calculation details."""
+    """Return a criterion card with the selected alternative and formula."""
     is_ev = kind == "ev"
     result = summary.expected_value if is_ev else summary.minimax
     winner = result.recommendation
@@ -3280,16 +3280,6 @@ def _criterion_card_html(
         else "Minimizes the largest regret versus the best strategy in each scenario."
     )
     formula = _criterion_formula(winner, payoff_matrix, probabilities, is_ev)
-    matrix = _decision_matrix_html(result, payoff_matrix, probabilities, is_ev)
-    note = (
-        f"Each expected productivity estimate is weighted by the forecast-derived scenario probability. "
-        f"{escape(alt_id)} wins with the highest weighted average."
-        if is_ev
-        else (
-            "The highlighted value is each strategy's largest regret. "
-            f"Minimax selects {escape(alt_id)} because its maximum regret is lowest."
-        )
-    )
 
     return f"""
     <div class="ag-criterion">
@@ -3311,11 +3301,6 @@ def _criterion_card_html(
                 <span class="ag-criterion-metric-unit">{escape(unit)}</span>
             </div>
             <div class="ag-criterion-formula">{escape(formula)}</div>
-        </div>
-        <div class="ag-criterion-toggle">Supporting calculation</div>
-        <div class="ag-criterion-detail">
-            {matrix}
-            <div class="ag-criterion-note">{note}</div>
         </div>
     </div>
     """
