@@ -4,6 +4,9 @@ This file should stay focused on page orchestration. Decision formulas,
 input validation, and reusable UI sections belong in the src package.
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from src.ui_components import render_app_shell
 
 

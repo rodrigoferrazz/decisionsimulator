@@ -12,13 +12,16 @@ import plotly.express as px
 
 import streamlit as st
 
+import plotly.graph_objects as go
+
 from src.data.historical_indicators import (
     HOME_CONTEXT,
     QUICK_ACCESS_CARDS,
-    get_at_a_glance,
+    get_crop_model_inputs,
     get_data_source_note,
     get_historical_insights,
     get_historical_insights_explanation,
+    yield_to_bags_per_hectare,
 )
 from src.data.station_weather import load_station_weather_summary
 from src.decision_engine import (
@@ -30,9 +33,14 @@ from src.decision_engine import (
 )
 from src.simulation_model import (
     DECISION_TREE_METHOD,
+    DECISION_TREE_BRANCH_DELTAS,
+    MONTE_CARLO_METHOD,
     PAYOFF_MATRIX_METHOD,
+    _TRIANGULAR_PARAMS,
     build_decision_tree_simulation,
+    build_monte_carlo_simulation,
     build_payoff_matrix_simulation,
+    build_strategy_payoff_matrix,
 )
 from src.weather_client import build_farm_weather_location, fetch_open_meteo_forecast
 
@@ -46,12 +54,14 @@ SURFACE = "#fffefa"
 BACKGROUND = "#f5f3ea"
 BORDER = "#e5e0d2"
 CLAY = "#9b6a3f"
+CHART_FONT = "Geist, system-ui, sans-serif"
 
 
 PAGE_NAMES = {
     "Home",
     "Start Simulation",
-    "Historical Insights",
+    "Methodology",
+    "Loading",
     "Recommendation Summary",
     "Compare Simulations",
 }
@@ -89,8 +99,10 @@ def render_app_shell() -> None:
         _render_home_page()
     elif page == "Start Simulation":
         _render_start_simulation_page()
-    elif page == "Historical Insights":
-        _render_historical_insights_page()
+    elif page == "Methodology":
+        _render_methodology_page()
+    elif page == "Loading":
+        _render_loading_page()
     elif page == "Recommendation Summary":
         _render_recommendation_page()
     elif page == "Compare Simulations":
@@ -1155,7 +1167,37 @@ def _inject_styles() -> None:
         }}
         div[data-testid="stVerticalBlock"]:has(.ag-header-action-marker)
         div[data-testid="stButton"] {{
-            margin-top: 2.35rem;
+            margin-top: 1.9rem;
+        }}
+        /* Larger Save / Export buttons (header + bottom of page) */
+        .st-key-save_sim_top button,
+        .st-key-save_sim_bottom button,
+        .st-key-export_bottom button {{
+            min-height: 3.4rem;
+            padding: 0.85rem 1.6rem !important;
+            font-size: 1.05rem !important;
+            font-weight: 650 !important;
+            border-radius: 12px;
+        }}
+        /* Keep the bottom Export + Save row perfectly aligned */
+        .st-key-save_sim_bottom,
+        .st-key-export_bottom,
+        .st-key-save_sim_bottom div[data-testid="stButton"],
+        .st-key-export_bottom div[data-testid="stDownloadButton"] {{
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+        }}
+        .st-key-save_sim_bottom button,
+        .st-key-export_bottom button {{
+            width: 100% !important;
+        }}
+        .ag-save-bottom-wrap {{
+            margin-top: 2.75rem;
+            margin-bottom: 0.25rem;
+            text-align: center;
+        }}
+        .ag-save-bottom-wrap .ag-kicker {{
+            margin-bottom: 0.6rem;
         }}
         .ag-page-head h1 {{
             margin-bottom: 0.2rem;
@@ -1935,10 +1977,10 @@ def _render_sidebar() -> None:
             ("Home", _icon_home, ":material/home:", "Home"),
             ("Start Simulation", _icon_sim, ":material/play_circle:", "Start Simulation"),
             (
-                "Historical Insights",
+                "Methodology",
                 _icon_history,
-                ":material/monitoring:",
-                "Historical Insights",
+                ":material/psychology:",
+                "Methodology",
             ),
             (
                 "Compare Simulations",
@@ -1960,7 +2002,7 @@ def _render_sidebar() -> None:
                 label,
                 key=f"nav_{page}",
                 icon=material_icon,
-                use_container_width=False,
+                width="content",
             ):
                 st.session_state["active_page"] = page
                 st.query_params["page"] = page
@@ -2008,7 +2050,7 @@ def _render_home_page() -> None:
     )
     card_icons = {
         "Start Simulation": _icon_play,
-        "Historical Insights": _icon_trend,
+        "Methodology": _icon_trend,
     }
 
     gs_html_parts = []
@@ -2062,74 +2104,193 @@ def _render_home_page() -> None:
         '<line x1="3" y1="10" x2="21" y2="10"/></svg>'
     )
 
-    glance_icons = [_icon_leaf, _icon_leaf, _icon_users, _icon_users]
 
-    glance_parts = []
-    at_a_glance = get_at_a_glance()
-    for icon, item in zip(glance_icons, at_a_glance):
-        label = item["label"]
-        value = item["value"]
-        unit = item["unit"]
-        sub = item["subtext"]
-        unit_html = f' <span class="ag-glance-unit">{unit}</span>' if unit else ""
-        glance_parts.append(
-            f'<div class="ag-glance-card">'
-            f'  <div class="ag-glance-icon">{icon}</div>'
-            f'  <div>'
-            f'    <div class="ag-glance-label">{label}</div>'
-            f'    <div class="ag-glance-value">{value}{unit_html}</div>'
-            f'    <div class="ag-glance-sub">{sub}</div>'
-            f'  </div>'
-            f'</div>'
-        )
+def _render_loading_page() -> None:
+    """Execute the pending simulation behind a clean centered loading screen."""
+    simulation_method = st.session_state.get("pending_simulation_method")
+    field_context = st.session_state.get("field_context", {})
 
-    st.markdown('<p class="ag-section-label">At a glance</p>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="ag-glance-grid">{"".join(glance_parts)}</div>',
-        unsafe_allow_html=True,
-    )
+    if not simulation_method or not field_context:
+        st.session_state["active_page"] = "Start Simulation"
+        st.query_params["page"] = "Start Simulation"
+        st.rerun()
+        return
 
     st.markdown(
         f"""
-        <div class="ag-source-note">
-            {get_data_source_note()}
+        <style>
+        section[data-testid="stSidebar"],
+        div[data-testid="stSidebarCollapsedControl"] {{
+            display: none !important;
+        }}
+        @keyframes ag-spin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        .ag-loading-overlay {{
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #f5f3ea;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1.25rem;
+            text-align: center;
+        }}
+        .ag-spinner {{
+            width: 44px;
+            height: 44px;
+            border: 3px solid #c8ddc8;
+            border-top-color: #2f5f3f;
+            border-radius: 50%;
+            animation: ag-spin 0.85s linear infinite;
+        }}
+        .ag-loading-kicker {{
+            font-size: 0.68rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #2f5f3f;
+            font-weight: 700;
+        }}
+        .ag-loading-title {{
+            margin: 0;
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #263125;
+            font-family: "Geist", sans-serif;
+        }}
+        </style>
+        <div class="ag-loading-overlay">
+            <div class="ag-spinner"></div>
+            <div>
+                <div class="ag-loading-kicker">{escape(simulation_method)}</div>
+                <p class="ag-loading-title">Running your simulation…</p>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
+    location = build_farm_weather_location(
+        latitude=float(field_context["farm_latitude"]),
+        longitude=float(field_context["farm_longitude"]),
+        label=str(field_context.get("weather_location", "")),
+    )
 
-def _render_historical_insights_page() -> None:
-    """Render a compact context page for historical agricultural signals."""
-    st.markdown('<div class="ag-kicker">Historical context</div>', unsafe_allow_html=True)
-    st.title("Historical insights.")
+    forecast_cache_key = f"{location.latitude:.4f}_{location.longitude:.4f}"
+    if st.session_state.get("forecast_cache_key") == forecast_cache_key:
+        forecast = st.session_state["forecast_cache"]
+    else:
+        try:
+            forecast = fetch_open_meteo_forecast(location)
+        except Exception:
+            forecast = {
+                "daily": {
+                    "time": ["fallback"] * 7,
+                    "weather_code": [1] * 7,
+                    "temperature_2m_max": [28.0] * 7,
+                    "temperature_2m_min": [20.0] * 7,
+                    "precipitation_sum": [3.0] * 7,
+                    "precipitation_probability_max": [40.0] * 7,
+                    "et0_fao_evapotranspiration": [4.0] * 7,
+                }
+            }
+
+    st.session_state["forecast_cache"] = forecast
+    st.session_state["forecast_cache_key"] = forecast_cache_key
+
+    station_summary = load_station_weather_summary()
+    station_observation = (
+        station_summary.to_model_input() if station_summary is not None else None
+    )
+
+    simulation_builder = (
+        build_decision_tree_simulation
+        if simulation_method == DECISION_TREE_METHOD
+        else build_payoff_matrix_simulation
+        if simulation_method == PAYOFF_MATRIX_METHOD
+        else build_monte_carlo_simulation
+    )
+    simulation = simulation_builder(field_context, forecast, station_observation=station_observation)
+
+    from src.audit_trail import log_simulation
+    log_simulation(simulation, field_context)
+
+    st.session_state["probabilities"] = simulation.probabilities
+    st.session_state["payoff_matrix"] = simulation.payoff_matrix
+    st.session_state["weather_evidence"] = simulation.weather_evidence
+    st.session_state["productivity_simulation"] = simulation
+    st.session_state["simulation_method"] = simulation.simulation_method
+    st.session_state.pop("pending_simulation_method", None)
+
+    st.session_state["active_page"] = "Recommendation Summary"
+    st.query_params["page"] = "Recommendation Summary"
+    st.rerun()
+
+
+def _render_methodology_page() -> None:
+    """Render explanations of the simulator methods."""
+    st.markdown('<div class="ag-kicker">Model explanation</div>', unsafe_allow_html=True)
+    st.title("Methodology.")
     st.caption(
-        "A dataset-backed view calculated from Bayer internal planting and harvest records."
+        "This page explains the three decision-support methods used by AgroVision."
     )
 
-    historical_insights = get_historical_insights()
-    insight_cards = []
-    for insight in historical_insights:
-        insight_cards.append(
-            '<div class="ag-history-card">'
-            f'<div class="ag-kicker">{escape(insight["title"])}</div>'
-            f'<div class="ag-stat-value">{escape(insight["value"])}</div>'
-            f'<p class="ag-muted">{escape(insight["description"])}</p>'
-            '</div>'
-        )
     st.markdown(
-        f'<div class="ag-history-grid">{"".join(insight_cards)}</div>',
-        unsafe_allow_html=True,
-    )
+        """
+        <div class="ag-info-card">
+            <div class="ag-kicker">Decision Tree</div>
+            <h3>Rule-based productivity estimation</h3>
+            <p class="ag-muted">
+                The Decision Tree estimates productivity from a fixed baseline and adjusts it according to
+                selected farm conditions: planting window, climatic condition, soil pH, and seed potential.
+                Each branch adds or subtracts productivity in bags per hectare.
+            </p>
+            <p class="ag-muted">
+                This method is useful because it is simple, explainable, and directly connected to the
+                spreadsheet logic developed during the project.
+            </p>
+        </div>
 
-    st.write("")
-    st.subheader("How this informs the simulator")
-    st.write(get_historical_insights_explanation())
+        <div class="ag-info-card">
+            <div class="ag-kicker">Payoff Matrix</div>
+            <h3>Strategy comparison under scenarios</h3>
+            <p class="ag-muted">
+                The Payoff Matrix compares three strategies: Conservative, Adaptive, and Intensive.
+                Each strategy is evaluated under favorable, moderate, and unfavorable climate scenarios.
+            </p>
+            <p class="ag-muted">
+                The simulator calculates Expected Value using scenario probabilities and also displays
+                Minimax Regret as a risk-aware comparison. Expected Value identifies the strategy with
+                the best average expected productivity, while Minimax Regret highlights the strategy
+                with the lowest worst-case regret.
+            </p>
+        </div>
 
-    st.markdown(
-        f"""
-        <div class="ag-source-note">
-            {get_data_source_note()}
+        <div class="ag-info-card">
+            <div class="ag-kicker">Monte Carlo Simulation</div>
+            <h3>Uncertainty and probability analysis</h3>
+            <p class="ag-muted">
+                Monte Carlo simulation runs thousands of trials by sampling uncertain variables from
+                triangular distributions. Instead of producing only one productivity estimate, it creates
+                a distribution of possible outcomes.
+            </p>
+            <p class="ag-muted">
+                This allows the user to analyze mean productivity, percentiles, downside risk, and the
+                probability of falling below a selected productivity threshold.
+            </p>
+        </div>
+
+        <div class="ag-info-card">
+            <div class="ag-kicker">How the methods work together</div>
+            <h3>From simple logic to uncertainty-aware decisions</h3>
+            <p class="ag-muted">
+                The Decision Tree provides the baseline productivity logic, the Payoff Matrix compares
+                strategic alternatives, and Monte Carlo expands the analysis by quantifying uncertainty.
+                Together, these methods transform agricultural data into a practical decision-support
+                recommendation.
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -2142,93 +2303,114 @@ def _render_start_simulation_page() -> None:
 
     with st.container():
         st.markdown('<span class="ag-sim-card-marker"></span>', unsafe_allow_html=True)
-        field_context = _render_context_inputs()
-        st.session_state["field_context"] = field_context
 
-        st.markdown('<div class="ag-run-button-wrap"></div>', unsafe_allow_html=True)
-        action_col_a, action_col_b = st.columns(2)
-        with action_col_a:
+        field_context = _render_context_inputs()
+        standard_errors = list(field_context.get("_input_errors", []))
+
+        st.markdown("### Run standard simulation")
+        st.caption("Decision Tree and Payoff Matrix use only the standard farm inputs above.")
+
+        standard_col_a, standard_col_b = st.columns(2)
+
+        with standard_col_a:
             run_decision_tree = st.button(
                 "Simulate - Decision Tree",
                 type="primary",
-                use_container_width=True,
+                width='stretch',
+                disabled=bool(standard_errors),
             )
-        with action_col_b:
+
+        with standard_col_b:
             run_payoff_matrix = st.button(
                 "Simulate - Payoff Matrix",
-                use_container_width=True,
+                width='stretch',
+                disabled=bool(standard_errors),
             )
 
-        if run_decision_tree or run_payoff_matrix:
-            simulation_method = (
-                DECISION_TREE_METHOD if run_decision_tree else PAYOFF_MATRIX_METHOD
-            )
-            input_errors = field_context.get("_input_errors", [])
-            if input_errors:
-                st.error("Please correct the numeric inputs before running the simulation.")
-                for error in input_errors:
-                    st.caption(f"- {error}")
-                return
-
-            location = build_farm_weather_location(
-                latitude=float(field_context["farm_latitude"]),
-                longitude=float(field_context["farm_longitude"]),
-                label=(
-                    f"Farm location ({field_context['farm_latitude']:.4f}, "
-                    f"{field_context['farm_longitude']:.4f})"
-                ),
-            )
-            field_context = {
-                **field_context,
-                "weather_location": location.label,
-                "weather_latitude": location.latitude,
-                "weather_longitude": location.longitude,
-            }
-            st.session_state["field_context"] = field_context
-
-            with st.spinner(
-                f"Fetching Open-Meteo forecast and running {simulation_method} simulation..."
-            ):
-                try:
-                    forecast = fetch_open_meteo_forecast(location)
-                except Exception as exc:
-                    st.error(f"Open-Meteo forecast could not be loaded: {exc}")
-                    return
-
-                station_summary = load_station_weather_summary()
-                station_observation = (
-                    station_summary.to_model_input()
-                    if station_summary is not None
-                    else None
-                )
-                simulation_builder = (
-                    build_decision_tree_simulation
-                    if simulation_method == DECISION_TREE_METHOD
-                    else build_payoff_matrix_simulation
-                )
-                simulation = simulation_builder(
-                    field_context,
-                    forecast,
-                    station_observation=station_observation,
-                )
-                st.session_state["probabilities"] = simulation.probabilities
-                st.session_state["payoff_matrix"] = simulation.payoff_matrix
-                st.session_state["weather_evidence"] = simulation.weather_evidence
-                st.session_state["productivity_simulation"] = simulation
-                st.session_state["simulation_method"] = simulation.simulation_method
-            st.session_state["active_page"] = "Recommendation Summary"
-            st.query_params["page"] = "Recommendation Summary"
-            st.rerun()
-
-        st.markdown(
-            """
-            <div class="ag-form-caption">
-                Climatic conditions are derived from Open-Meteo API and the internal station database.
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.markdown("### Monte Carlo distribution parameters")
+        st.caption(
+            "Only used when running Monte Carlo. Values must be between -20 and 20, "
+            "and each variable must satisfy min < mode < max."
         )
 
+        monte_carlo_errors: list[str] = []
+
+        monte_carlo_triangular_params = _render_monte_carlo_triangular_params(
+            st.session_state.get("field_context", {}),
+            monte_carlo_errors,
+        )
+
+        field_context = {
+            **field_context,
+            "monte_carlo_triangular_params": monte_carlo_triangular_params,
+        }
+
+        st.session_state["field_context"] = field_context
+
+        all_monte_carlo_errors = standard_errors + monte_carlo_errors
+
+        if monte_carlo_errors:
+            st.error("Monte Carlo parameters are invalid.")
+            for error in monte_carlo_errors:
+                st.caption(f"- {error}")
+
+        monte_left, monte_mid, monte_right = st.columns([1, 1.4, 1])
+
+        with monte_mid:
+            run_monte_carlo = st.button(
+                "Simulate - Monte Carlo",
+                width='stretch',
+                disabled=bool(all_monte_carlo_errors),
+            )
+
+        if not (run_decision_tree or run_payoff_matrix or run_monte_carlo):
+            st.markdown(
+                """
+                <div class="ag-form-caption">
+                    Climatic conditions are derived from Open-Meteo API and the internal station database.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            return
+
+        if run_decision_tree:
+            simulation_method = DECISION_TREE_METHOD
+            final_errors = standard_errors
+        elif run_payoff_matrix:
+            simulation_method = PAYOFF_MATRIX_METHOD
+            final_errors = standard_errors
+        else:
+            simulation_method = MONTE_CARLO_METHOD
+            final_errors = all_monte_carlo_errors
+
+        if final_errors:
+            st.error("Please correct the inputs before running the simulation.")
+            for error in final_errors:
+                st.caption(f"- {error}")
+            return
+
+        location = build_farm_weather_location(
+            latitude=float(field_context["farm_latitude"]),
+            longitude=float(field_context["farm_longitude"]),
+            label=(
+                f"Farm location ({field_context['farm_latitude']:.4f}, "
+                f"{field_context['farm_longitude']:.4f})"
+            ),
+        )
+
+        field_context = {
+            **field_context,
+            "weather_location": location.label,
+            "weather_latitude": location.latitude,
+            "weather_longitude": location.longitude,
+        }
+
+        st.session_state["field_context"] = field_context
+        st.session_state["pending_simulation_method"] = simulation_method
+        st.session_state["active_page"] = "Loading"
+        st.query_params["page"] = "Loading"
+        st.rerun()
 
 def _render_context_inputs() -> dict[str, object]:
     """Render agricultural and operational context inputs from the prototype."""
@@ -2317,6 +2499,77 @@ def _render_context_inputs() -> dict[str, object]:
         "planting_window": planting_window,
         "_input_errors": input_errors,
     }
+
+
+def _render_monte_carlo_triangular_params(
+    defaults: dict[str, object],
+    errors: list[str],
+) -> dict[str, tuple[float, float, float]]:
+    """Render Monte Carlo triangular parameters with strict manual validation."""
+    values: dict[str, tuple[float, float, float]] = {}
+
+    branch_labels = {
+        "planting_window": "Planting Window",
+        "climate": "Climate",
+        "soil_ph": "Soil pH",
+        "seed_potential": "Seed Potential",
+    }
+
+    default_params = defaults.get("monte_carlo_triangular_params", _TRIANGULAR_PARAMS)
+
+    for branch_name, branch_label in branch_labels.items():
+        branch_default = default_params.get(
+            branch_name,
+            _TRIANGULAR_PARAMS[branch_name],
+        )
+
+        col_min, col_mode, col_max = st.columns([1, 1, 1])
+
+        with col_min:
+            raw_min = st.text_input(
+                f"{branch_label} min",
+                value=f"{float(branch_default[0]):.1f}",
+                key=f"mc_{branch_name}_min",
+                help="Accepted range: -20 to 20 sc/ha.",
+            )
+
+        with col_mode:
+            raw_mode = st.text_input(
+                f"{branch_label} mode",
+                value=f"{float(branch_default[1]):.1f}",
+                key=f"mc_{branch_name}_mode",
+                help="Accepted range: -20 to 20 sc/ha.",
+            )
+
+        with col_max:
+            raw_max = st.text_input(
+                f"{branch_label} max",
+                value=f"{float(branch_default[2]):.1f}",
+                key=f"mc_{branch_name}_max",
+                help="Accepted range: -20 to 20 sc/ha.",
+            )
+
+        try:
+            min_value = float(str(raw_min).replace(",", "."))
+            mode_value = float(str(raw_mode).replace(",", "."))
+            max_value = float(str(raw_max).replace(",", "."))
+        except ValueError:
+            errors.append(f"{branch_label}: all values must be valid numbers.")
+            values[branch_name] = branch_default
+            continue
+
+        if min_value < -20 or mode_value < -20 or max_value < -20:
+            errors.append(f"{branch_label}: values cannot be lower than -20.")
+
+        if min_value > 20 or mode_value > 20 or max_value > 20:
+            errors.append(f"{branch_label}: values cannot be higher than 20.")
+
+        if not (min_value < mode_value < max_value):
+            errors.append(f"{branch_label}: must satisfy min < mode < max.")
+
+        values[branch_name] = (min_value, mode_value, max_value)
+
+    return values
 
 
 def _validated_numeric_text_input(
@@ -2412,7 +2665,7 @@ def _render_compare_strategies_page() -> None:
             plot_bgcolor=SURFACE,
             font_color=TEXT,
         )
-        st.plotly_chart(fig, use_container_width=False, theme=None)
+        st.plotly_chart(fig, width='content', theme=None)
 
     with chart_cols[1]:
         st.subheader("Minimax Regret")
@@ -2434,7 +2687,7 @@ def _render_compare_strategies_page() -> None:
             plot_bgcolor=SURFACE,
             font_color=TEXT,
         )
-        st.plotly_chart(fig, use_container_width=False, theme=None)
+        st.plotly_chart(fig, width='content', theme=None)
 
     st.markdown(
         _payoff_matrix_table_html(payoff_matrix, summary, probabilities),
@@ -2519,10 +2772,54 @@ def _render_empty_recommendation_page() -> None:
         st.rerun()
 
 
+def _render_save_simulation_button(simulation, field_context, *, key: str) -> str | None:
+    """Render a Save Simulation button and return the confirmation toast HTML, if saved.
+
+    The toast is returned (not rendered here) so the caller can render it outside the
+    button's column. Rendering it inside the column would change the row height and
+    shift adjacent buttons when columns are vertically centered.
+    """
+    if st.button("Save Simulation", width='stretch', type="primary", key=key):
+        saved_snapshot = _save_simulation_snapshot(simulation, field_context)
+        return _save_simulation_toast_html(saved_snapshot)
+    return None
+
+
+def _render_export_button(simulation, field_context, *, key: str) -> None:
+    """Render the method-appropriate export button (PDF for Decision Tree, text otherwise)."""
+    method = getattr(simulation, "simulation_method", DECISION_TREE_METHOD)
+    if method == DECISION_TREE_METHOD:
+        st.download_button(
+            "Export PDF",
+            data=_build_productivity_summary_pdf(simulation, field_context),
+            file_name="agrovision_recommendation_summary.pdf",
+            mime="application/pdf",
+            width='stretch',
+            key=key,
+        )
+    elif method == MONTE_CARLO_METHOD:
+        st.download_button(
+            "Export Monte Carlo summary",
+            data=_build_simulation_download_text(simulation, field_context),
+            file_name="agrovision_monte_carlo_summary.txt",
+            mime="text/plain",
+            width='stretch',
+            key=key,
+        )
+    else:
+        st.download_button(
+            "Export Summary",
+            data=_build_simulation_download_text(simulation, field_context),
+            file_name="agrovision_payoff_matrix_summary.txt",
+            mime="text/plain",
+            width='stretch',
+            key=key,
+        )
+
+
 def _render_productivity_recommendation_page(simulation) -> None:
     """Render the scoped productivity forecast and recommendation summary."""
     field_context = st.session_state.get("field_context", {})
-    saved_toast = None
     simulation_method = getattr(simulation, "simulation_method", DECISION_TREE_METHOD)
 
     header_col, save_col = st.columns([0.72, 0.28])
@@ -2543,28 +2840,49 @@ def _render_productivity_recommendation_page(simulation) -> None:
         )
     with save_col:
         st.markdown('<div class="ag-header-action-marker"></div>', unsafe_allow_html=True)
-        if st.button("Save Simulation", use_container_width=False):
-            saved_snapshot = _save_simulation_snapshot(simulation, field_context)
-            saved_toast = _save_simulation_toast_html(saved_snapshot)
+        top_toast = _render_save_simulation_button(simulation, field_context, key="save_sim_top")
 
-    if saved_toast:
-        st.markdown(saved_toast, unsafe_allow_html=True)
+    if top_toast:
+        st.markdown(top_toast, unsafe_allow_html=True)
 
     st.markdown(
         _productivity_summary_html(simulation, field_context),
         unsafe_allow_html=True,
     )
 
+    _render_decision_analytics_panel(simulation, field_context)
+    _render_whatif_panel(simulation)
+
     if simulation_method == DECISION_TREE_METHOD:
         _render_productivity_evidence_sections(simulation, field_context)
-        return
+    elif simulation_method == MONTE_CARLO_METHOD:
+        _render_monte_carlo_recommendation_sections(simulation, field_context)
+    else:
+        _render_payoff_matrix_recommendation_sections(
+            simulation,
+            field_context,
+            include_consensus=False,
+            include_weather_evidence=False,
+        )
 
-    _render_payoff_matrix_recommendation_sections(
-        simulation,
-        field_context,
-        include_consensus=False,
-        include_weather_evidence=False,
+    # Export + Save repeated at the bottom, centered, so users don't scroll back up.
+    st.markdown(
+        '<div class="ag-save-bottom-wrap">'
+        '<div class="ag-kicker">Done reviewing?</div></div>',
+        unsafe_allow_html=True,
     )
+    _, col_export, col_save, _ = st.columns(
+        [0.22, 0.28, 0.28, 0.22], vertical_alignment="center"
+    )
+    with col_export:
+        _render_export_button(simulation, field_context, key="export_bottom")
+    with col_save:
+        bottom_toast = _render_save_simulation_button(
+            simulation, field_context, key="save_sim_bottom"
+        )
+
+    if bottom_toast:
+        st.markdown(bottom_toast, unsafe_allow_html=True)
 
 
 def _simulation_method_description(simulation_method: str) -> str:
@@ -2573,10 +2891,339 @@ def _simulation_method_description(simulation_method: str) -> str:
             "The Payoff Matrix engine compares seed density strategies with "
             "Expected Value and Minimax using forecast-derived scenario probabilities."
         )
+    if simulation_method == MONTE_CARLO_METHOD:
+        return (
+            "The Monte Carlo engine uses repeated sampling from the weather-informed model "
+            "to evaluate strategy outcomes and uncertainty."
+        )
     return (
         "The Decision Tree engine estimates productivity from the spreadsheet tree: "
         "base productivity plus selected branch effects."
     )
+
+
+def _render_whatif_panel(simulation) -> None:
+    """What-if mode: let the user override soil pH category and see how the recommendation changes."""
+    pf = simulation.productivity_factors
+    probabilities = simulation.probabilities
+
+    # Base productivity used to build the payoff matrix
+    full_base = float(
+        pf.get("decision_tree_baseline_for_payoff_matrix")
+        or simulation.expected_productivity_bags_ha
+    )
+
+    # Determine current soil pH category from stored delta
+    ph_deltas = DECISION_TREE_BRANCH_DELTAS["soil_ph"]  # {"Adequate": 3.0, "Borderline": 0.0, "Critical": -4.0}
+    delta_to_category = {v: k for k, v in ph_deltas.items()}
+    stored_ph_delta = float(
+        (pf.get("decision_tree_adjustments") or {}).get("soil_ph", 0.0)
+    )
+    current_category = delta_to_category.get(stored_ph_delta, "Borderline")
+
+    # Anchor the baseline matrix to the run's productivity so the what-if "Original
+    # EV" column matches the decision-analytics charts above.
+    orig_summary = build_decision_summary(
+        build_strategy_payoff_matrix(full_base), probabilities
+    )
+    orig_rec = orig_summary.final_recommendation
+    orig_ev_scores = orig_summary.expected_value.scores
+
+    st.markdown(
+        '<div class="ag-kicker" style="margin-top:2rem;margin-bottom:.25rem">What-if analysis</div>'
+        '<p class="ag-muted" style="font-size:.85rem;margin-bottom:1rem;max-width:68ch">'
+        "Change the soil pH category and see whether the recommendation holds."
+        "</p>",
+        unsafe_allow_html=True,
+    )
+
+    options = list(ph_deltas.keys())
+    labels  = {
+        "Adequate":   "Adequate — pH 5.5–6.5  (+3.0 sc/ha)",
+        "Borderline": "Borderline — pH 5.0–5.4 or 6.6–6.8  (0.0 sc/ha)",
+        "Critical":   "Critical — pH < 5.0 or > 6.8  (−4.0 sc/ha)",
+    }
+
+    wf_category = st.selectbox(
+        "Soil pH category",
+        options=options,
+        index=options.index(current_category),
+        format_func=lambda k: labels[k],
+        key="wf_soil_ph",
+    )
+
+    wf_delta  = ph_deltas[wf_category]
+    wf_base   = full_base - stored_ph_delta + wf_delta
+
+    # Rebuild payoff matrix with the what-if base (shared offsets, single source of truth)
+    wf_payoff = build_strategy_payoff_matrix(wf_base)
+
+    wf_summary  = build_decision_summary(wf_payoff, probabilities)
+    wf_rec      = wf_summary.final_recommendation
+    wf_ev_scores = wf_summary.expected_value.scores
+    changed     = wf_rec != orig_rec
+
+    badge_bg    = "#fff3cd" if changed else "var(--ag-leaf-soft)"
+    badge_color = "#856404" if changed else "var(--ag-leaf-dark)"
+    badge_label = f"⚠ Changes to {wf_rec.replace(' Strategy', '')}" if changed else "✓ Recommendation holds"
+    context_note = f"Current: {current_category} · What-if: {wf_category} (Δ base {wf_base - full_base:+.1f} sc/ha)"
+
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:center;gap:1rem;margin:.75rem 0 1rem;flex-wrap:wrap">
+            <span style="background:{badge_bg};color:{badge_color};
+                         padding:.35rem .9rem;border-radius:999px;font-size:.82rem;font-weight:650">
+                {badge_label}
+            </span>
+            <span class="ag-muted" style="font-size:.82rem">{context_note}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    rows_html = ""
+    for strat in list(orig_ev_scores.keys()):
+        orig_ev = orig_ev_scores[strat]
+        wf_ev   = wf_ev_scores[strat]
+        delta   = wf_ev - orig_ev
+        delta_color = "var(--ag-leaf)" if delta >= 0 else "#842029"
+        is_wf_rec = strat == wf_rec
+        row_bg = "var(--ag-leaf-soft)" if is_wf_rec else "transparent"
+        short  = strat.replace(" Strategy", "")
+        rows_html += (
+            f'<tr style="background:{row_bg}">'
+            f'<td style="padding:.5rem .75rem;font-weight:{"700" if is_wf_rec else "400"}">{short}</td>'
+            f'<td style="padding:.5rem .75rem;text-align:right">{orig_ev:.2f}</td>'
+            f'<td style="padding:.5rem .75rem;text-align:right">{wf_ev:.2f}</td>'
+            f'<td style="padding:.5rem .75rem;text-align:right;color:{delta_color}">{delta:+.2f}</td>'
+            f'</tr>'
+        )
+
+    st.markdown(
+        f"""
+        <table style="width:100%;border-collapse:collapse;font-size:.88rem;margin-bottom:1rem">
+            <thead>
+                <tr style="border-bottom:1px solid var(--ag-line)">
+                    <th style="padding:.5rem .75rem;text-align:left;font-weight:600">Strategy</th>
+                    <th style="padding:.5rem .75rem;text-align:right;font-weight:600">Original EV</th>
+                    <th style="padding:.5rem .75rem;text-align:right;font-weight:600">What-if EV</th>
+                    <th style="padding:.5rem .75rem;text-align:right;font-weight:600">Δ</th>
+                </tr>
+            </thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_decision_analytics_panel(
+    simulation,
+    field_context: dict[str, object],
+) -> None:
+    """Render BI: 3 decision-quality KPIs + EV-vs-Regret scatter + probability sensitivity chart."""
+    import numpy as np
+
+    # Anchor the strategy payoff matrix to THIS run's productivity baseline so the
+    # analytics charts track each new simulation. The raw simulation.payoff_matrix
+    # is the static weather default for the Decision Tree / Monte Carlo methods,
+    # which would otherwise leave these charts frozen across runs.
+    pf = simulation.productivity_factors
+    base_productivity = float(
+        pf.get("decision_tree_baseline_for_payoff_matrix")
+        or simulation.expected_productivity_bags_ha
+    )
+    payoff_matrix = build_strategy_payoff_matrix(base_productivity)
+    probabilities = simulation.probabilities
+    summary = build_decision_summary(payoff_matrix, probabilities)
+
+    ev_scores = summary.expected_value.scores
+    regret_scores = summary.minimax.scores
+    final_rec = summary.final_recommendation
+
+    sorted_ev = sorted(ev_scores.items(), key=lambda x: x[1], reverse=True)
+    decision_margin = round(sorted_ev[0][1] - sorted_ev[1][1], 2)
+
+    criteria_agree = summary.expected_value.recommendation == summary.minimax.recommendation
+
+    all_payoffs = [p for strat in payoff_matrix.values() for p in strat.values()]
+    payoff_spread = round(max(all_payoffs) - min(all_payoffs), 2)
+
+    margin_color = "var(--ag-leaf)" if decision_margin >= 2 else ("#856404" if decision_margin >= 0.5 else "#842029")
+    spread_color = "#842029" if payoff_spread > 30 else ("#856404" if payoff_spread > 15 else "var(--ag-leaf)")
+    agreement_color = "var(--ag-leaf)" if criteria_agree else "#856404"
+
+    st.markdown(
+        '<div class="ag-kicker" style="margin-top:2rem;margin-bottom:.75rem">Decision analytics</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="ag-metric-grid" style="grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:1.25rem">
+          <div class="ag-metric-item">
+            <div class="ag-metric-label">Decision margin</div>
+            <div class="ag-metric-value" style="color:{margin_color}">{decision_margin:+.2f} sc/ha</div>
+            <p class="ag-muted" style="font-size:.78rem;margin:.3rem 0 0">
+              EV gap between recommended and second-best strategy — thin margin means higher sensitivity
+            </p>
+          </div>
+          <div class="ag-metric-item">
+            <div class="ag-metric-label">Payoff spread</div>
+            <div class="ag-metric-value" style="color:{spread_color}">{payoff_spread:.1f} sc/ha</div>
+            <p class="ag-muted" style="font-size:.78rem;margin:.3rem 0 0">
+              Range between best and worst outcome across all strategies and scenarios
+            </p>
+          </div>
+          <div class="ag-metric-item">
+            <div class="ag-metric-label">Criteria agreement</div>
+            <div class="ag-metric-value" style="color:{agreement_color}">{"Both agree" if criteria_agree else "Diverge"}</div>
+            <p class="ag-muted" style="font-size:.78rem;margin:.3rem 0 0">
+              {"Expected Value and Minimax Regret select the same strategy" if criteria_agree else "Expected Value and Minimax Regret select different strategies — review manually"}
+            </p>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    chart_left, chart_right = st.columns(2)
+
+    with chart_left:
+        st.markdown(
+            '<div class="ag-kicker" style="margin-bottom:.5rem">Risk–return profile</div>',
+            unsafe_allow_html=True,
+        )
+        strategies = list(ev_scores.keys())
+        short_labels = [s.replace(" Strategy", "") for s in strategies]
+        ev_vals = [ev_scores[s] for s in strategies]
+        regret_vals = [regret_scores[s] for s in strategies]
+
+        fig_scatter = go.Figure()
+        for i, (strat, label) in enumerate(zip(strategies, short_labels)):
+            is_rec = strat == final_rec
+            # Keep right-most labels from clipping by anchoring them inward.
+            is_rightmost = regret_vals[i] == max(regret_vals)
+            fig_scatter.add_trace(go.Scatter(
+                x=[regret_vals[i]],
+                y=[ev_vals[i]],
+                mode="markers+text",
+                name=label,
+                text=[label],
+                textposition="top left" if is_rightmost else "top center",
+                textfont=dict(size=12, color=TEXT, family=CHART_FONT),
+                marker=dict(
+                    size=18 if is_rec else 12,
+                    color=PRIMARY if is_rec else MUTED,
+                    line=dict(width=1.5, color="#ffffff"),
+                ),
+                showlegend=False,
+            ))
+
+        # Pad the ranges so markers + their text labels never touch the frame.
+        y_min, y_max = min(ev_vals), max(ev_vals)
+        x_min, x_max = min(regret_vals), max(regret_vals)
+        y_pad = max((y_max - y_min) * 0.32, 0.6)
+        x_pad = max((x_max - x_min) * 0.18, 0.6)
+
+        fig_scatter.add_annotation(
+            xref="paper", yref="paper",
+            x=0.0, y=1.0,
+            text="↖ lower risk · higher return",
+            showarrow=False,
+            font=dict(size=10, color=MUTED, family=CHART_FONT),
+            xanchor="left",
+            yanchor="bottom",
+        )
+        fig_scatter.update_layout(
+            template="plotly_white",
+            height=280,
+            margin=dict(l=12, r=18, t=34, b=12),
+            font=dict(family=CHART_FONT, color=TEXT, size=12),
+            xaxis=dict(
+                title=dict(text="Max regret (sc/ha)", font=dict(size=12, color=MUTED)),
+                tickfont=dict(size=11, color=MUTED),
+                gridcolor=BORDER, zeroline=False,
+                range=[x_min - x_pad, x_max + x_pad],
+            ),
+            yaxis=dict(
+                title=dict(text="Expected value (sc/ha)", font=dict(size=12, color=MUTED)),
+                tickfont=dict(size=11, color=MUTED),
+                gridcolor=BORDER, zeroline=False,
+                range=[y_min - y_pad * 0.6, y_max + y_pad],
+            ),
+            plot_bgcolor=SURFACE,
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_scatter, width='stretch')
+
+    with chart_right:
+        st.markdown(
+            '<div class="ag-kicker" style="margin-bottom:.5rem">Sensitivity to favorable scenario probability</div>',
+            unsafe_allow_html=True,
+        )
+        scenarios = list(probabilities.keys())
+        fav_scenario = next((s for s in scenarios if "favor" in s.lower()), scenarios[0])
+        other_scenarios = [s for s in scenarios if s != fav_scenario]
+        other_sum = sum(probabilities[s] for s in other_scenarios)
+
+        p_fav_range = np.linspace(0.0, 1.0, 51)
+        ev_curves: dict[str, list[float]] = {s: [] for s in payoff_matrix}
+        for p_fav in p_fav_range:
+            remainder = 1.0 - p_fav
+            trial_probs: dict[str, float] = {fav_scenario: p_fav}
+            for s in other_scenarios:
+                trial_probs[s] = (remainder * probabilities[s] / other_sum) if other_sum else remainder / len(other_scenarios)
+            for strat, payoffs in payoff_matrix.items():
+                ev = sum(payoffs[sc] * trial_probs[sc] for sc in scenarios)
+                ev_curves[strat].append(ev)
+
+        fig_sens = go.Figure()
+        line_colors = [PRIMARY, CLAY, MUTED]
+        for (strat, evs), color in zip(ev_curves.items(), line_colors):
+            short = strat.replace(" Strategy", "")
+            is_rec = strat == final_rec
+            fig_sens.add_trace(go.Scatter(
+                x=list(p_fav_range * 100),
+                y=evs,
+                name=short,
+                line=dict(color=color, width=2.5 if is_rec else 1.5, dash="solid" if is_rec else "dot"),
+            ))
+
+        current_p_fav = probabilities[fav_scenario] * 100
+        fig_sens.add_vline(
+            x=current_p_fav,
+            line_dash="dash",
+            line_color=PRIMARY,
+            line_width=1.5,
+            annotation_text=f"Current · {current_p_fav:.0f}%",
+            annotation_position="top right",
+            annotation_font=dict(size=10, color=PRIMARY, family=CHART_FONT),
+        )
+        fig_sens.update_layout(
+            template="plotly_white",
+            height=280,
+            margin=dict(l=12, r=18, t=44, b=12),
+            font=dict(family=CHART_FONT, color=TEXT, size=12),
+            xaxis=dict(
+                title=dict(text="P(favorable) %", font=dict(size=12, color=MUTED)),
+                tickfont=dict(size=11, color=MUTED),
+                gridcolor=BORDER, zeroline=False,
+            ),
+            yaxis=dict(
+                title=dict(text="Expected value (sc/ha)", font=dict(size=12, color=MUTED)),
+                tickfont=dict(size=11, color=MUTED),
+                gridcolor=BORDER, zeroline=False,
+            ),
+            legend=dict(
+                orientation="h", yanchor="bottom", y=1.04, xanchor="right", x=1,
+                font=dict(size=11, color=TEXT, family=CHART_FONT),
+                bgcolor="rgba(0,0,0,0)",
+            ),
+            plot_bgcolor=SURFACE,
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_sens, width='stretch')
 
 
 def _render_productivity_evidence_sections(
@@ -2587,14 +3234,6 @@ def _render_productivity_evidence_sections(
     st.markdown(
         _productivity_calculation_flow_html(simulation, field_context),
         unsafe_allow_html=True,
-    )
-
-    st.download_button(
-        "Export PDF",
-        data=_build_productivity_summary_pdf(simulation, field_context),
-        file_name="agrovision_recommendation_summary.pdf",
-        mime="application/pdf",
-        use_container_width=False,
     )
 
     st.markdown(
@@ -2671,12 +3310,313 @@ def _render_payoff_matrix_recommendation_sections(
         unsafe_allow_html=True,
     )
 
-    st.download_button(
-        "Export Summary",
-        data=_build_simulation_download_text(simulation, field_context),
-        file_name="agrovision_payoff_matrix_summary.txt",
-        mime="text/plain",
-        use_container_width=False,
+
+
+def _render_monte_carlo_recommendation_sections(
+    simulation,
+    field_context: dict,
+) -> None:
+    """Render Monte Carlo output: distribution chart, tornado, stats, risk threshold."""
+    import numpy as np
+    import plotly.graph_objects as go
+ 
+    pf = dict(simulation.productivity_factors)
+ 
+    # ── 1. Reconstruct trial samples from stored triangular params ────────────
+    # We re-run the same sampling (seed=42) so the charts match the backend.
+    triangular_params = pf.get("monte_carlo_triangular_params", {})
+    n = int(pf.get("monte_carlo_trials", 10_000))
+ 
+    if triangular_params:
+        from scipy.stats import triang as scipy_triang
+        rng = np.random.default_rng(seed=42)
+        branch_samples = {}
+        for branch_name, params in triangular_params.items():
+            a, c, b = params["min"], params["mode"], params["max"]
+            span = b - a
+            shape_c = (c - a) / span
+            branch_samples[branch_name] = scipy_triang.rvs(
+                c=shape_c, loc=a, scale=span, size=n, random_state=rng
+            )
+        base = float(pf.get("base_productivity", 60.0))
+        productivity_trials = base + sum(branch_samples.values())
+    else:
+        # Fallback: synthesise from stored percentiles (no charts)
+        productivity_trials = None
+ 
+    # ── 2. Summary stats (from stored values — always available) ─────────────
+    mean_val = float(pf.get("monte_carlo_mean", simulation.expected_productivity_bags_ha))
+    std_val  = float(pf.get("monte_carlo_std", 0.0))
+    p10      = float(pf.get("monte_carlo_p10", 0.0))
+    p25      = float(pf.get("monte_carlo_p25", 0.0))
+    p50      = float(pf.get("monte_carlo_p50", 0.0))
+    p75      = float(pf.get("monte_carlo_p75", 0.0))
+    p90      = float(pf.get("monte_carlo_p90", 0.0))
+    sensitivity = dict(pf.get("monte_carlo_sensitivity", {}))
+ 
+    # ── 3. Metric cards ───────────────────────────────────────────────────────
+    st.markdown(
+        f"""
+        <div class="ag-metric-grid ag-metric-grid--five" style="margin-bottom:1.25rem">
+          <div class="ag-metric-item">
+            <div class="ag-metric-label">Mean</div>
+            <div class="ag-metric-value">{mean_val:.2f} sc/ha</div>
+          </div>
+          <div class="ag-metric-item">
+            <div class="ag-metric-label">Std deviation</div>
+            <div class="ag-metric-value">{std_val:.2f} sc/ha</div>
+          </div>
+          <div class="ag-metric-item">
+            <div class="ag-metric-label">P5 / P95</div>
+            <div class="ag-metric-value">{float(pf.get("monte_carlo_p5", p10)):.1f} – {float(pf.get("monte_carlo_p95", p90)):.1f}</div>
+          </div>
+          <div class="ag-metric-item">
+            <div class="ag-metric-label">Median (P50)</div>
+            <div class="ag-metric-value">{p50:.2f} sc/ha</div>
+          </div>
+          <div class="ag-metric-item">
+            <div class="ag-metric-label">Trials</div>
+            <div class="ag-metric-value">{n:,}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+ 
+    # ── 4. Risk threshold ─────────────────────────────────────────────────────
+    st.markdown(
+        '<div class="ag-kicker" style="margin-bottom:.5rem">Risk threshold</div>',
+        unsafe_allow_html=True,
+    )
+    threshold = st.number_input(
+        "Probability below threshold (sc/ha)",
+        min_value=40.0,
+        max_value=80.0,
+        value=float(round(p50 - 2, 1)),
+        step=0.5,
+        key="mc_threshold",
+        help="Proportion of trials that fall below this productivity level.",
+    )
+ 
+    if productivity_trials is not None:
+        prob_below = float(np.mean(productivity_trials < threshold)) * 100
+    else:
+        # Approximate from stored percentiles
+        checkpoints = [
+            (p10, 10), (p25, 25), (p50, 50), (p75, 75), (p90, 90),
+        ]
+        prob_below = 0.0
+        for pval, pct in checkpoints:
+            if threshold <= pval:
+                prob_below = float(pct)
+                break
+        else:
+            prob_below = 95.0
+ 
+    risk_color = (
+        "var(--ag-leaf-soft); color: var(--ag-leaf-dark)"
+        if prob_below < 20
+        else "#fff3cd; color: #856404"
+        if prob_below < 50
+        else "#f8d7da; color: #842029"
+    )
+    st.markdown(
+        f"""
+        <div style="background:{risk_color};border-radius:10px;
+                    padding:.75rem 1rem;margin-bottom:1.25rem;font-size:.95rem">
+          <strong>{prob_below:.1f}%</strong> of trials fall below
+          <strong>{threshold:.1f} sc/ha</strong>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+ 
+    # ── 5. Charts: histogram + tornado side by side ───────────────────────────
+    chart_col_left, chart_col_right = st.columns(2)
+ 
+    with chart_col_left:
+        st.markdown(
+            '<div class="ag-kicker" style="margin-bottom:.5rem">Output distribution</div>',
+            unsafe_allow_html=True,
+        )
+        if productivity_trials is not None:
+            arr = np.array(productivity_trials)
+            counts, bin_edges = np.histogram(arr, bins=40)
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            bar_colors = [
+                "#EF5350" if center < threshold else PRIMARY
+                for center in bin_centers
+            ]
+ 
+            fig_hist = go.Figure()
+            fig_hist.add_trace(go.Bar(
+                x=bin_centers,
+                y=counts,
+                marker_color=bar_colors,
+                marker_line_width=0,
+                name="Trials",
+            ))
+            # Vertical lines for P10, P50, P90
+            for pval, label, color in [
+                (p10, "P10", "#EF5350"),
+                (p50, "P50", "#263125"),
+                (p90, "P90", PRIMARY),
+            ]:
+                fig_hist.add_vline(
+                    x=pval,
+                    line_dash="dash",
+                    line_color=color,
+                    line_width=1.5,
+                    annotation_text=f"{label} {pval:.1f}",
+                    annotation_font_size=10,
+                    annotation_font_color=color,
+                )
+ 
+            fig_hist.update_layout(
+                showlegend=False,
+                height=280,
+                margin=dict(l=10, r=10, t=20, b=30),
+                paper_bgcolor=SURFACE,
+                plot_bgcolor=SURFACE,
+                font_color=TEXT,
+                xaxis=dict(title="sc/ha", gridcolor=BORDER, tickfont_size=11),
+                yaxis=dict(title="Trials", gridcolor=BORDER, tickfont_size=11),
+                bargap=0.02,
+            )
+            st.plotly_chart(fig_hist, width='stretch', theme=None)
+        else:
+            st.caption("Re-run the simulation to see the distribution chart.")
+ 
+    with chart_col_right:
+        st.markdown(
+            '<div class="ag-kicker" style="margin-bottom:.5rem">Tornado — sensitivity (Pearson r)</div>',
+            unsafe_allow_html=True,
+        )
+        if sensitivity:
+            BRANCH_LABELS = {
+                "planting_window": "Planting window",
+                "climate": "Climate",
+                "soil_ph": "Soil pH",
+                "seed_potential": "Seed potential",
+            }
+            sorted_sens = sorted(
+                sensitivity.items(), key=lambda kv: abs(kv[1])
+            )
+            labels = [BRANCH_LABELS.get(k, k) for k, _ in sorted_sens]
+            values = [abs(v) for _, v in sorted_sens]
+ 
+            fig_tornado = go.Figure(go.Bar(
+                x=values,
+                y=labels,
+                orientation="h",
+                marker_color=PRIMARY,
+                marker_line_width=0,
+            ))
+            fig_tornado.update_layout(
+                showlegend=False,
+                height=280,
+                margin=dict(l=10, r=10, t=20, b=30),
+                paper_bgcolor=SURFACE,
+                plot_bgcolor=SURFACE,
+                font_color=TEXT,
+                xaxis=dict(
+                    title="|Pearson r|",
+                    range=[0, 1],
+                    gridcolor=BORDER,
+                    tickfont_size=11,
+                ),
+                yaxis=dict(gridcolor=BORDER, tickfont_size=11),
+            )
+            st.plotly_chart(fig_tornado, width='stretch', theme=None)
+        else:
+            st.caption("Sensitivity data not available.")
+ 
+    # ── 6. S-curve (CDF) ──────────────────────────────────────────────────────
+    if productivity_trials is not None:
+        st.markdown(
+            '<div class="ag-kicker" style="margin-bottom:.5rem">Cumulative distribution (S-curve)</div>',
+            unsafe_allow_html=True,
+        )
+        sorted_prod = np.sort(productivity_trials)
+        step = max(1, len(sorted_prod) // 300)
+        x_cdf = sorted_prod[::step]
+        y_cdf = np.linspace(0, 100, len(x_cdf))
+ 
+        fig_cdf = go.Figure()
+        fig_cdf.add_trace(go.Scatter(
+            x=x_cdf, y=y_cdf,
+            mode="lines",
+            line=dict(color=PRIMARY, width=2),
+            fill="tozeroy",
+            fillcolor="rgba(47,95,63,0.08)",
+        ))
+        fig_cdf.add_hline(y=50, line_dash="dot", line_color=MUTED,
+                          annotation_text="P50", annotation_font_size=10)
+        fig_cdf.add_vline(x=threshold, line_dash="dash", line_color="#EF5350",
+                          line_width=1.5,
+                          annotation_text=f"Threshold {threshold:.1f}",
+                          annotation_font_size=10, annotation_font_color="#EF5350")
+        fig_cdf.update_layout(
+            showlegend=False,
+            height=220,
+            margin=dict(l=10, r=10, t=20, b=30),
+            paper_bgcolor=SURFACE,
+            plot_bgcolor=SURFACE,
+            font_color=TEXT,
+            xaxis=dict(title="sc/ha", gridcolor=BORDER, tickfont_size=11),
+            yaxis=dict(title="Cumulative %", gridcolor=BORDER, tickfont_size=11,
+                       range=[0, 100]),
+        )
+        st.plotly_chart(fig_cdf, width='stretch', theme=None)
+ 
+    # ── 7. Triangular params table ────────────────────────────────────────────
+    if triangular_params:
+        BRANCH_LABELS = {
+            "planting_window": "Planting window",
+            "climate": "Climate",
+            "soil_ph": "Soil pH",
+            "seed_potential": "Seed potential",
+        }
+        rows_html = "".join(
+            f"<tr>"
+            f"<td>{escape(BRANCH_LABELS.get(k, k))}</td>"
+            f"<td>{params['min']:+.1f}</td>"
+            f"<td>{params['mode']:+.1f}</td>"
+            f"<td>{params['max']:+.1f}</td>"
+            f"</tr>"
+            for k, params in triangular_params.items()
+        )
+        st.markdown(
+            dedent(f"""
+            <div class="ag-info-card" style="margin-top:1rem">
+              <div class="ag-kicker">Distribution parameters</div>
+              <div class="ag-compare-table-wrap" style="margin-top:.75rem">
+                <table class="ag-compare-table">
+                  <thead>
+                    <tr>
+                      <th>Variable</th>
+                      <th>Min (sc/ha)</th>
+                      <th>Mode (sc/ha)</th>
+                      <th>Max (sc/ha)</th>
+                    </tr>
+                  </thead>
+                  <tbody>{rows_html}</tbody>
+                </table>
+              </div>
+              <p style="font-size:.8rem;color:var(--ag-muted);margin-top:.6rem">
+                Triangular distribution: min = worst-case branch delta,
+                mode = most-probable branch delta, max = best-case branch delta.
+                Final productivity = {float(pf.get("base_productivity",60)):.0f} (base) + sum of four independent samples.
+              </p>
+            </div>
+            """),
+            unsafe_allow_html=True,
+        )
+ 
+    # ── 8. Weather evidence + export ─────────────────────────────────────────
+    st.markdown(
+        _weather_evidence_html(simulation.weather_evidence, field_context),
+        unsafe_allow_html=True,
     )
 
 
@@ -2782,7 +3722,7 @@ def _render_compare_simulations_page() -> None:
         plot_bgcolor=SURFACE,
         font_color=TEXT,
     )
-    st.plotly_chart(fig, use_container_width=False, theme=None)
+    st.plotly_chart(fig, width='content', theme=None)
 
     action_col_a, action_col_b = st.columns([1, 1])
     with action_col_a:
@@ -2791,10 +3731,10 @@ def _render_compare_simulations_page() -> None:
             data=comparison_df.to_csv(index=False),
             file_name="agrovision_session_simulation_comparison.csv",
             mime="text/csv",
-            use_container_width=False,
+            width='content',
         )
     with action_col_b:
-        if st.button("Clear Saved Simulations", use_container_width=False):
+        if st.button("Clear Saved Simulations", width='content'):
             st.session_state["saved_simulations"] = []
             st.rerun()
 
@@ -3008,6 +3948,7 @@ def _productivity_summary_html(simulation, field_context: dict[str, object]) -> 
         display_productivity=expected_productivity,
     )
     simulation_method = getattr(simulation, "simulation_method", DECISION_TREE_METHOD)
+    productivity_factors = dict(simulation.productivity_factors)
 
     if simulation_method == PAYOFF_MATRIX_METHOD:
         summary = simulation.decision_summary or build_decision_summary(
@@ -3045,6 +3986,39 @@ def _productivity_summary_html(simulation, field_context: dict[str, object]) -> 
         """).strip()
         crest = escape(final_id)
         chip = "Strategy pick"
+    elif simulation_method == MONTE_CARLO_METHOD:
+        summary = simulation.decision_summary or build_decision_summary(
+            simulation.payoff_matrix,
+            simulation.probabilities,
+        )
+        final = summary.final_recommendation
+        final_id, final_name = _alternative_parts(final)
+        monte_carlo_mean = productivity_factors.get("monte_carlo_mean", 0.0)
+        monte_carlo_std = productivity_factors.get("monte_carlo_std", 0.0)
+        eyebrow = "Monte Carlo simulation overview"
+        title_html = (
+            f"Monte Carlo recommendation: <em>{escape(final_name)}</em>"
+        )
+        meta_html = dedent(f"""
+                <div>
+                    <div class="ag-consensus-meta-label">Trials</div>
+                    <div class="ag-consensus-meta-value">{int(productivity_factors.get('monte_carlo_trials', 0)):,}</div>
+                </div>
+                <div>
+                    <div class="ag-consensus-meta-label">Selected strategy</div>
+                    <div class="ag-consensus-meta-value">{escape(_strategy_label(final))}</div>
+                </div>
+                <div>
+                    <div class="ag-consensus-meta-label">Mean payoff</div>
+                    <div class="ag-consensus-meta-value">{monte_carlo_mean:.2f} bags/ha</div>
+                </div>
+                <div>
+                    <div class="ag-consensus-meta-label">Uncertainty (std)</div>
+                    <div class="ag-consensus-meta-value">{monte_carlo_std:.2f} bags/ha</div>
+                </div>
+        """).strip()
+        crest = escape(final_id)
+        chip = "Monte Carlo result"
     else:
         eyebrow = "Decision Tree expected value from spreadsheet branches"
         title_html = (

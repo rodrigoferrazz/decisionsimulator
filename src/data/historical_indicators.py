@@ -35,9 +35,9 @@ QUICK_ACCESS_CARDS = (
         "is_primary": True,
     },
     {
-        "title": "Historical Insights",
-        "body": "Review metrics calculated from Bayer internal planting and harvest data.",
-        "target": "Historical Insights",
+        "title": "Methodology",
+        "body": "Understand how Decision Tree, Payoff Matrix, and Monte Carlo work",
+        "target": "Methodology",
         "is_primary": False,
     },
 )

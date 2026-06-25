@@ -1,15 +1,17 @@
-# Scenario and Decision Simulator (v1)
+# AgroVision Decision Simulator — Simulator integrated with BI (Sprint 05)
 
-This folder contains the first functional prototype of AgroVision's decision
-support simulator for Sprint 03.
+This folder is the self-contained Sprint 05 deliverable of AgroVision's decision
+support simulator. It integrates the decision engine (Decision Tree, Payoff
+Matrix, and Monte Carlo methods) with the BI/analytics layer. Everything needed
+to run it is contained in this folder.
 
 The current scope follows `SCOPE_AND_DECISION_LOGIC.md`: the simulator supports
 agricultural decision-making by comparing seed density strategies under climate,
 soil, productivity, and risk uncertainty.
 
 Crop-specific payoff references are documented in
-`PAYOFF_MATRICES_BY_CROP.md`, including the Sprint 02 soybean matrix and the
-corn matrix derived from Bayer internal historical records.
+`PAYOFF_MATRICES_BY_CROP.md`, including the soybean matrix and the corn matrix
+derived from Bayer internal historical records.
 
 ## Decision Scope
 
@@ -27,7 +29,7 @@ The states of the world are:
 
 ## Decision Criteria
 
-Version 1 uses two decision perspectives:
+The simulator uses two decision perspectives:
 
 - **Expected Value (primary criterion)**: calculates the weighted average
   productivity for each strategy using forecast-derived scenario probabilities.
@@ -56,28 +58,39 @@ and Minimax decision logic.
 ## Folder Structure
 
 ```text
-Scenario and Decision Simulator (v1)/
+Simulator integrated with BI/
 ├── app.py
 ├── requirements.txt
+├── render.yaml
 ├── README.md
+├── CONTEXT.md
 ├── SCOPE_AND_DECISION_LOGIC.md
 ├── PAYOFF_MATRICES_BY_CROP.md
+├── DATA_PIPELINE.md
 ├── data/
 │   ├── harvest_summary_brazil.csv
 │   ├── planting_summary_brazil.csv
 │   └── station_data.xls
 ├── src/
 │   ├── __init__.py
+│   ├── audit_trail.py
 │   ├── decision_engine.py
+│   ├── decision_tree_model.py
 │   ├── input_validation.py
 │   ├── simulation_model.py
 │   ├── ui_components.py
 │   ├── weather_client.py
 │   └── data/
 │       ├── __init__.py
-│       └── historical_indicators.py
+│       ├── dataset_options.py
+│       ├── historical_indicators.py
+│       └── station_weather.py
 └── tests/
-    └── test_decision_engine_manual.py
+    ├── test_decision_engine_manual.py
+    ├── test_historical_indicators_manual.py
+    ├── test_station_weather_manual.py
+    ├── test_weather_client_manual.py
+    └── test_weather_simulation_manual.py
 ```
 
 ## Responsibilities
@@ -96,8 +109,10 @@ Scenario and Decision Simulator (v1)/
 
 ## Run Locally
 
+From inside this folder (`Simulator integrated with BI`):
+
 ```bash
-cd "Sprint 03/Scenario and Decision Simulator (v1)"
+python3 -m pip install -r requirements.txt
 python3 -m streamlit run app.py
 ```
 
@@ -120,18 +135,23 @@ use `/_stcore/health` as the health check endpoint.
 
 ## Manual Verification
 
-From the repository root:
+From inside this folder, run any of the manual test scripts:
 
 ```bash
-python3 "Sprint 03/Scenario and Decision Simulator (v1)/tests/test_decision_engine_manual.py"
+python3 -m tests.test_decision_engine_manual
+python3 -m tests.test_weather_simulation_manual
 ```
+
+## Data Pipeline
+
+See [`DATA_PIPELINE.md`](DATA_PIPELINE.md) for a full description of where
+inputs come from, how each simulation method processes them, and how outputs
+are rendered in the BI layer.
 
 ## Notes
 
-- Historical Insights refers to historical agricultural dataset context, not
-  user search history or saved simulation history.
 - The deployment folder must include `data/planting_summary_brazil.csv` and
   `data/harvest_summary_brazil.csv`.
-- The current reference logic is centralized in `src/data/` so it is not
+- Historical crop reference logic is centralized in `src/data/` so it is not
   scattered through the interface.
-- A full database is not required for this Sprint 03 prototype.
+- The Monte Carlo engine uses seed = 42 for reproducibility across reruns.

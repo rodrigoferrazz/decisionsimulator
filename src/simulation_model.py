@@ -7,9 +7,12 @@ productivity payoff matrix.
 
 from __future__ import annotations
 
+import numpy as np
+from scipy.stats import triang as scipy_triang
+
 import random
 from dataclasses import dataclass
-from statistics import mean
+from statistics import mean, stdev
 from typing import Any
 
 from src.data.historical_indicators import (
@@ -26,6 +29,7 @@ from src.decision_engine import (
 
 
 DECISION_TREE_METHOD = "Decision Tree"
+MONTE_CARLO_METHOD = "Monte Carlo"
 PAYOFF_MATRIX_METHOD = "Payoff Matrix"
 DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA = 60.0
 DECISION_TREE_BRANCHES = {
@@ -54,6 +58,68 @@ DECISION_TREE_BRANCH_DELTAS = {
     branch_name: {label: delta for label, delta, _ in branches}
     for branch_name, branches in DECISION_TREE_BRANCHES.items()
 }
+
+MONTE_CARLO_TRIAL_COUNT = 10_000
+
+ 
+# Triangular distribution parameters for each decision-tree branch.
+# Derived automatically from DECISION_TREE_BRANCHES:
+#   - a (min)  -> smallest delta available in the branch
+#   - c (mode) -> delta of the most likely scenario
+#   - b (max)  -> largest delta available in the branch
+# If mode == a or mode == b, it is nudged 10% inward to keep
+# a < c < b (a requirement of the triangular distribution).
+def _build_triangular_params(
+    branches: dict,
+) -> dict[str, tuple[float, float, float]]:
+    """Derive (a, c, b) triangular parameters from the decision-tree branch table."""
+    result: dict[str, tuple[float, float, float]] = {}
+    for branch_name, scenarios in branches.items():
+        deltas = [delta for _, delta, _ in scenarios]
+        probs  = [prob  for _, _, prob  in scenarios]
+        a = float(min(deltas))
+        b = float(max(deltas))
+        # mode = delta of the most likely scenario
+        c = float(deltas[probs.index(max(probs))])
+        span = b - a
+        if span == 0:
+            # degenerate branch: every scenario has the same delta
+            result[branch_name] = (a - 0.01, a, a + 0.01)
+            continue
+        # ensure a < c < b
+        if c <= a:
+            c = a + span * 0.10
+        elif c >= b:
+            c = b - span * 0.10
+        result[branch_name] = (a, c, b)
+    return result
+ 
+ 
+# Computed once at module load (same data as DECISION_TREE_BRANCHES)
+_TRIANGULAR_PARAMS: dict[str, tuple[float, float, float]] = _build_triangular_params(
+    {
+        "planting_window": (
+            ("Early",  2.0, 0.30),
+            ("Normal", 0.0, 0.50),
+            ("Late",  -4.0, 0.20),
+        ),
+        "climate": (
+            ("Wet",    4.0, 0.25),
+            ("Normal", 2.0, 0.50),
+            ("Dry",   -5.0, 0.25),
+        ),
+        "soil_ph": (
+            ("Adequate",   3.0, 0.24),
+            ("Borderline", 0.0, 0.48),
+            ("Critical",  -4.0, 0.28),
+        ),
+        "seed_potential": (
+            ("High Potential",    3.0, 0.30),
+            ("Intermediate",      1.0, 0.45),
+            ("Limited Potential", -3.0, 0.25),
+        ),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -198,26 +264,68 @@ def build_decision_tree_simulation(
     )
 
 
+# Per-strategy/scenario offsets (sc/ha) applied to a productivity baseline to
+# build the strategy payoff matrix. Single source of truth shared by the Payoff
+# Matrix engine, the BI decision-analytics panel, and the what-if panel.
+STRATEGY_PAYOFF_OFFSETS: dict[str, dict[str, float]] = {
+    "Conservative Strategy": {
+        "C1 - Favorable": -2.0,
+        "C2 - Moderate": -3.0,
+        "C3 - Unfavorable": -4.0,
+    },
+    "Adaptive Strategy": {
+        "C1 - Favorable": 0.0,
+        "C2 - Moderate": -1.0,
+        "C3 - Unfavorable": -3.0,
+    },
+    "Intensive Strategy": {
+        "C1 - Favorable": 2.0,
+        "C2 - Moderate": 0.0,
+        "C3 - Unfavorable": -8.0,
+    },
+}
+
+
+def build_strategy_payoff_matrix(base_productivity: float) -> PayoffMatrix:
+    """Build the strategy payoff matrix anchored to a productivity baseline."""
+    base = float(base_productivity)
+    return {
+        strategy: {
+            scenario: round(base + offset, 2)
+            for scenario, offset in scenario_offsets.items()
+        }
+        for strategy, scenario_offsets in STRATEGY_PAYOFF_OFFSETS.items()
+    }
+
+
 def build_payoff_matrix_simulation(
     field_context: dict[str, object],
     forecast: dict[str, Any],
     station_observation: dict[str, object] | None = None,
 ) -> WeatherDrivenSimulation:
-    """Build a simulation result using the Payoff Matrix decision engine."""
+    """Build a Payoff Matrix aligned with the Decision Tree productivity baseline."""
     base_simulation = build_decision_tree_simulation(
         field_context,
         forecast,
         station_observation=station_observation,
     )
+
+    base_productivity = float(base_simulation.expected_productivity_bags_ha)
+
+    payoff_matrix: PayoffMatrix = build_strategy_payoff_matrix(base_productivity)
+
     decision_summary = build_decision_summary(
-        base_simulation.payoff_matrix,
+        payoff_matrix,
         base_simulation.probabilities,
     )
+
     final_strategy = decision_summary.final_recommendation
     expected_value = decision_summary.expected_value.scores[final_strategy]
     maximum_regret = decision_summary.minimax.scores[final_strategy]
+
     productivity_factors = {
         **base_simulation.productivity_factors,
+        "decision_tree_baseline_for_payoff_matrix": base_productivity,
         "decision_expected_value": expected_value,
         "decision_maximum_regret": maximum_regret,
     }
@@ -225,20 +333,174 @@ def build_payoff_matrix_simulation(
     return WeatherDrivenSimulation(
         simulation_method=PAYOFF_MATRIX_METHOD,
         probabilities=base_simulation.probabilities,
-        payoff_matrix=base_simulation.payoff_matrix,
+        payoff_matrix=payoff_matrix,
         weather_evidence=base_simulation.weather_evidence,
         climatic_condition=base_simulation.climatic_condition,
         expected_productivity_bags_ha=expected_value,
         recommendation_summary=(
             f"Payoff Matrix recommends {final_strategy}. "
-            f"The selected strategy has Expected Value of {expected_value:.2f} "
-            f"bags/ha and maximum regret of {maximum_regret:.2f} bags/ha under "
-            "the forecast-derived scenario probabilities."
+            f"It uses the Decision Tree productivity baseline of "
+            f"{base_productivity:.2f} bags/ha, then compares Conservative, "
+            f"Adaptive, and Intensive strategies across favorable, moderate, "
+            f"and unfavorable scenarios. The selected strategy has Expected "
+            f"Value of {expected_value:.2f} bags/ha and maximum regret of "
+            f"{maximum_regret:.2f} bags/ha."
         ),
         productivity_factors=productivity_factors,
         decision_summary=decision_summary,
     )
 
+
+def build_monte_carlo_simulation(
+    field_context: dict,
+    forecast: dict,
+    station_observation: dict | None = None,
+) -> "WeatherDrivenSimulation":
+    """Build a Monte Carlo simulation using triangular distributions."""
+
+    import numpy as np
+    from scipy.stats import triang as scipy_triang
+
+    base = build_decision_tree_simulation(
+        field_context,
+        forecast,
+        station_observation=station_observation,
+    )
+
+    n = MONTE_CARLO_TRIAL_COUNT
+    rng = np.random.default_rng(seed=42)
+
+    triangular_params = field_context.get(
+        "monte_carlo_triangular_params",
+        _TRIANGULAR_PARAMS,
+    )
+
+    branch_samples: dict[str, np.ndarray] = {}
+    triangular_params_used: dict[str, dict[str, float]] = {}
+
+    for branch_name, params in triangular_params.items():
+        a, c, b = params
+
+        a = float(a)
+        c = float(c)
+        b = float(b)
+        if min(a, c, b) < -20.0 or max(a, c, b) > 20.0:
+            continue
+
+        if b - a > 25.0:
+            continue
+        if not a < c < b:
+            continue
+
+        span = b - a
+        shape_c = (c - a) / span
+
+        samples = scipy_triang.rvs(
+            c=shape_c,
+            loc=a,
+            scale=span,
+            size=n,
+            random_state=rng,
+        )
+
+        branch_samples[branch_name] = samples
+        triangular_params_used[branch_name] = {
+            "min": round(a, 2),
+            "mode": round(c, 2),
+            "max": round(b, 2),
+        }
+
+    if not branch_samples:
+        raise ValueError(
+            "Monte Carlo could not run because no valid triangular distributions "
+            "were provided. Check that every variable satisfies min < mode < max."
+        )
+
+    total_adjustments = np.zeros(n)
+
+    for samples in branch_samples.values():
+        total_adjustments += samples
+
+    productivity_trials = (
+        DECISION_TREE_BASE_PRODUCTIVITY_BAGS_HA
+        + total_adjustments
+    )
+
+    p5 = float(np.percentile(productivity_trials, 5))
+    p10 = float(np.percentile(productivity_trials, 10))
+    p25 = float(np.percentile(productivity_trials, 25))
+    p50 = float(np.percentile(productivity_trials, 50))
+    p75 = float(np.percentile(productivity_trials, 75))
+    p90 = float(np.percentile(productivity_trials, 90))
+    p95 = float(np.percentile(productivity_trials, 95))
+
+    mean_prod = float(np.mean(productivity_trials))
+    std_prod = float(np.std(productivity_trials))
+
+    sensitivity: dict[str, float] = {}
+
+    for branch_name, samples in branch_samples.items():
+        if np.std(samples) == 0 or np.std(productivity_trials) == 0:
+            sensitivity[branch_name] = 0.0
+        else:
+            sensitivity[branch_name] = round(
+                float(np.corrcoef(samples, productivity_trials)[0, 1]),
+                4,
+            )
+
+    most_sensitive_variable = (
+        max(sensitivity, key=lambda k: abs(sensitivity[k]))
+        if sensitivity
+        else "not available"
+    )
+
+    most_sensitive_value = (
+        sensitivity[most_sensitive_variable]
+        if sensitivity
+        else 0.0
+    )
+
+    productivity_factors = {
+        **base.productivity_factors,
+        "monte_carlo_trials": n,
+        "monte_carlo_distribution": "triangular",
+        "monte_carlo_mean": round(mean_prod, 2),
+        "monte_carlo_std": round(std_prod, 2),
+        "monte_carlo_p5": round(p5, 2),
+        "monte_carlo_p10": round(p10, 2),
+        "monte_carlo_p25": round(p25, 2),
+        "monte_carlo_p50": round(p50, 2),
+        "monte_carlo_p75": round(p75, 2),
+        "monte_carlo_p90": round(p90, 2),
+        "monte_carlo_p95": round(p95, 2),
+        "monte_carlo_triangular_params": triangular_params_used,
+        "monte_carlo_sensitivity": sensitivity,
+        "monte_carlo_most_sensitive_variable": most_sensitive_variable,
+        "monte_carlo_most_sensitive_value": most_sensitive_value,
+        "monte_carlo_note": (
+            "Each uncertain decision-tree variable is sampled from an independent "
+            "triangular distribution. Final productivity = base productivity "
+            "plus the sampled adjustments."
+        ),
+    }
+
+    return WeatherDrivenSimulation(
+        simulation_method=MONTE_CARLO_METHOD,
+        probabilities=base.probabilities,
+        payoff_matrix=base.payoff_matrix,
+        weather_evidence=base.weather_evidence,
+        climatic_condition=base.climatic_condition,
+        expected_productivity_bags_ha=round(mean_prod, 2),
+        recommendation_summary=(
+            f"Monte Carlo ({n:,} trials, triangular distribution) — "
+            f"mean productivity: {mean_prod:.1f} sc/ha | "
+            f"P5: {p5:.1f} | P95: {p95:.1f} sc/ha. "
+            f"Most sensitive variable: {most_sensitive_variable} "
+            f"(r = {most_sensitive_value:.2f})."
+        ),
+        productivity_factors=productivity_factors,
+        decision_summary=None,
+    )
 
 def _classify_weather(
     *,
@@ -699,3 +961,7 @@ def _has_required_daily_data(*series: list[object]) -> bool:
 
 def _as_float_list(values: list[object]) -> list[float]:
     return [float(value) for value in values]
+
+def _triangular_params_for_branch(branch_name: str) -> tuple[float, float, float]:
+    """Return pre-computed (a, mode, b) for a decision-tree branch."""
+    return _TRIANGULAR_PARAMS[branch_name]
